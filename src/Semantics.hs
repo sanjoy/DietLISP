@@ -99,36 +99,14 @@ evaluate bindings (ListE [SymE "if", condition, a, b]) =
       evaluateIf _                _ _ =
           UndefinedStrR "Condition non-boolean in `if`"
 
--- (zerop integer)
--- :: Integer -> Bool
--- This is different from (lambda (x) (== x 0)) because it also asserts the
--- type.
-evaluate bindings (ListE [SymE "zerop", value]) =
-  evaluateZeroP $ evaluate bindings value
-    where
-      evaluateZeroP (IntegerR 0) = BooleanR True
-      evaluateZeroP (IntegerR _) = BooleanR False
-      evaluateZeroP _            =
-          UndefinedStrR "`zerop` applied on non-integer"
-
 -- (cons head tail)
 -- :: ([x], x) -> [x]
 evaluate bindings (ListE [SymE "cons", head, tail]) =
   evaluateCons (evaluate bindings head) (evaluate bindings tail)
     where
-      consCompatible :: Result -> Result -> Bool
-      consCompatible (IntegerR _)  (IntegerR _)  = True
-      consCompatible (BooleanR _)  (BooleanR _)  = True
-      consCompatible (ListR (a:_)) (ListR (b:_)) = consCompatible a b
-      consCompatible _             _             = False
-
       evaluateCons :: Result -> Result -> Result
       evaluateCons a (ListR []) = ListR [a]
-      evaluateCons a (ListR (b:rest)) =
-        if consCompatible a b then
-            ListR (a:b:rest)
-        else
-            UndefinedStrR "Incompatible types in `cons`"
+      evaluateCons a (ListR (b:rest)) = ListR (a:b:rest)
 
 -- (head list)
 -- :: [x] -> x
@@ -148,15 +126,9 @@ evaluate bindings (ListE [SymE "tail", list]) =
       evaluateTail _              =
           UndefinedStrR "Non-list type in `tail`"
 
--- (nullp list)
--- :: [x] -> Bool
-evaluate bindings (ListE [SymE "nullp", list]) =
-  evaluateNullP $ evaluate bindings list
-    where
-      evaluateNullP (ListR []) = BooleanR True
-      evaluateNullP (ListR _)  = BooleanR False
-      evaluateNullP _          =
-          UndefinedStrR "Non-list type in `nullp`"
+-- (list x0 x1 x2 ...)
+evaluate bindings (ListE (SymE "list":rest)) =
+  ListR $ map (evaluate bindings) rest
 
 -- (== a b)
 -- :: x -> x -> Bool
@@ -216,17 +188,21 @@ evaluate bindings (ListE generic) =
 evalInternal = (evaluate emptyM) . parse . tokenize
 
 -- Some features built into the interperter for convenience.
-idExp   = evalInternal $ "(lambda (x) x)"
-yExp    = evalInternal $ "(lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x)))))"
-notExp  = evalInternal $ "(lambda (x) (if (== x true) false true))"
-succExp = evalInternal $ "(lambda (n f x) (f (n f x)))"
-zeroExp = evalInternal $ "(lambda (f x) x)"
+idExp    = evalInternal $ "(lambda (x) x)"
+yExp     = evalInternal $ "(lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x)))))"
+notExp   = evalInternal $ "(lambda (x) (if (== x true) false true))"
+zeroPExp = evalInternal $ "(lambda (x) (== x 0))"
+nullPExp = evalInternal $ "(lambda (x) (== x null))"
+mapExp   = evalInternal $ "((lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x))))) (lambda (self f l) (if (== null l) null (cons (f (head l)) (self f (tail l))))))"
+foldExp  = evalInternal $ "((lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x))))) (lambda (self f p l) (if (== null l) p (self f (f p (head l)) (tail l)))))"
 
 builtins = fromList [("id", idExp),
                      ("Y", yExp),
                      ("not", notExp),
-                     ("cSucc", succExp),
-                     ("cZero", zeroExp)]
+                     ("zerop", zeroPExp),
+                     ("nullp", nullPExp),
+                     ("map", mapExp),
+                     ("fold", foldExp)]
 
 -- Essentially the complete external interface for this module.  Evaluates
 -- a string in a fresh context.
