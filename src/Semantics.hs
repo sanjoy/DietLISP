@@ -157,6 +157,24 @@ evaluate bindings (ListE [SymE "||", a, b]) =
          let (BooleanR x) = evaluate bindings b
          in BooleanR x
 
+-- (integerp a)
+evaluate bindings (ListE [SymE "integerp", a]) =
+  case evaluate bindings a of
+    IntegerR _ -> BooleanR True
+    otherwise  -> BooleanR False
+
+-- (listp a)
+evaluate bindings (ListE [SymE "listp", a]) =
+  case evaluate bindings a of
+    ListR _    -> BooleanR True
+    otherwise  -> BooleanR False
+
+-- (boolp a)
+evaluate bindings (ListE [SymE "boolp", a]) =
+  case evaluate bindings a of
+    BooleanR _ -> BooleanR True
+    otherwise  -> BooleanR False
+
 -- (let ((var0 value0) (var1 value1) ...) expression)
 -- :: typeof (expression)
 evaluate bindings (ListE [SymE "let", ListE variables, expression]) =
