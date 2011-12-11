@@ -205,7 +205,7 @@ evaluate bindings (ListE generic) =
 
 evalInternal = (evaluate emptyM) . parse . tokenize
 
--- Some features built into the interperter for convenience.
+-- The interpreter prelude.
 idExp    = evalInternal $ "(lambda (x) x)"
 yExp     = evalInternal $ "(lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x)))))"
 notExp   = evalInternal $ "(lambda (x) (if (== x true) false true))"
@@ -213,6 +213,8 @@ zeroPExp = evalInternal $ "(lambda (x) (== x 0))"
 nullPExp = evalInternal $ "(lambda (x) (== x null))"
 mapExp   = evalInternal $ "((lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x))))) (lambda (self f l) (if (== null l) null (cons (f (head l)) (self f (tail l))))))"
 foldExp  = evalInternal $ "((lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x))))) (lambda (self f p l) (if (== null l) p (self f (f p (head l)) (tail l)))))"
+zipExp   = evalInternal $ "((lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x))))) (lambda (self f l0 l1) (if (|| (== null l0) (== nulll l1)) null (cons (f (head l0) (head l1)) (self f (tail l0) (tail l1))))))"
+rangeExp = evalInternal $ "((lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x))))) (lambda (self b e) (if (>= b e) null (cons b (self (+ 1 b) e)))))"
 
 builtins = fromList [("id", idExp),
                      ("Y", yExp),
@@ -220,7 +222,9 @@ builtins = fromList [("id", idExp),
                      ("zerop", zeroPExp),
                      ("nullp", nullPExp),
                      ("map", mapExp),
-                     ("fold", foldExp)]
+                     ("fold", foldExp),
+                     ("zip", zipExp),
+                     ("range", rangeExp)]
 
 -- Essentially the complete external interface for this module.  Evaluates
 -- a string in a fresh context.
