@@ -7,6 +7,33 @@ import string
 import subprocess
 import sys
 
+def combine_strings(strs):
+    if len(strs) == 0:
+        return ''
+    
+    s = strs[0]
+    add_newline = True
+
+    if s.endswith('\\') and not s.endswith('\\\\'):
+        s = s[:-1].rstrip()
+        add_newline = False
+
+    combined = s
+
+    for s in strs[1:]:
+        prev_add_newline = add_newline
+        if s.endswith('\\') and not s.endswith('\\\\'):
+            s = s[:-1].rstrip()
+            add_newline = False
+        else:
+            add_newline = True
+
+        if prev_add_newline:
+            combined = combined + '\n' + s
+        else:
+            combined = combined + s
+    return combined
+
 def parse(file_obj):
     command = None
     outputs = []
@@ -27,7 +54,7 @@ def parse(file_obj):
     if command is None:
         print 'Could not find `RUN` string.'
         return None
-    return (command, string.join(outputs, '\n'))
+    return (command, combine_strings(outputs))
 
 def test(command, output):
     try:
