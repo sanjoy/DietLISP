@@ -6,7 +6,7 @@ import Lexer
 import Origin
 import Parser
 
-import Data.Map(Map, empty, fromList, insert, lookup)
+import Data.Map(Map, empty, fromList, toList, insert, lookup)
 
 -- Pretty way to prevent clashes.
 emptyM  = empty
@@ -73,9 +73,13 @@ evaluate _ (BooleanE b) = BooleanR b
 evaluate _ (SymE "null") = ListR []
 
 evaluate bindings (SymE s) =
-    case lookupM s bindings of
-      Just result -> result
-      Nothing     -> UndefinedStrR $ "Could not resolve symbol `" ++ s ++ "`"
+  case lookupM s bindings of
+    Just result -> result
+    Nothing     -> UndefinedStrR $ resolutionError s bindings
+      where
+        resolutionError symbol bindings =
+          let list = show $ map fst $ toList bindings
+          in "Could not resolve symbol `" ++ symbol ++ "`\nI can see: " ++ list
 
 -- Basic arithmetic.
 evaluate bindings (ListE (SymE "+":addends))  = nAryOp bindings addends 0 (+)
