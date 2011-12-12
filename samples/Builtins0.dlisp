@@ -1,0 +1,19 @@
+;; Test some of the builtin-functions.
+;; RUN: ../dlisp <file>
+
+;; Test fold.
+(fold (lambda (x y)
+        (+ x y))
+      0 (range 5 50))
+;; EXPECT: [1215, \
+
+(map (lambda (x)
+       (+ 1 x))
+     (list 1 2 3 4))
+;; EXPECT: [2,3,4,5], \
+
+(zip (lambda (x y)
+       (+ x y))
+     (list 1 2 3)
+     (list 5 6 7))
+;; EXPECT: [6,8,10]]
