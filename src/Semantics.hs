@@ -203,7 +203,8 @@ evaluate bindings (ListE generic) =
           curry (LambdaR (insertM a (evaluate bindings e) oldB) as expr) es
         curry _ _ = UndefinedStrR "Non-function called"
 
-evalInternal = (evaluate emptyM) . parse . tokenize
+-- Evaluates a single expression.
+evalInternal = (evaluate emptyM) . head . parse . tokenize
 
 -- The interpreter prelude.
 idExp    = evalInternal $ "(lambda (x) x)"
@@ -228,5 +229,5 @@ builtins = fromList [("id", idExp),
 
 -- Essentially the complete external interface for this module.  Evaluates
 -- a string in a fresh context.
-eval :: String -> Result
-eval = (evaluate builtins) . parse . tokenize
+eval :: String -> [Result]
+eval = (map $ evaluate builtins) . parse . tokenize

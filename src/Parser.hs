@@ -14,12 +14,12 @@ data StackElement = ValueSE Exp -- A value on the stack
                   | MarkerSE    -- A marker signalling an open parenthesis
                     deriving(Show, Eq)
 
-parse :: [Token] -> Exp
+parse :: [Token] -> [Exp]
 parse tokens = stateMachine tokens []
 
-stateMachine :: [Token] -> [StackElement] -> Exp
+stateMachine :: [Token] -> [StackElement] -> [Exp]
 
-stateMachine [] [ValueSE e] = e
+stateMachine [] values = map (\(ValueSE e)->e) values
 
 stateMachine (LParT:rest) stack = stateMachine rest (MarkerSE:stack)
 
