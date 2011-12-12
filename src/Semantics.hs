@@ -203,7 +203,7 @@ evaluate bindings (ListE generic) =
         curry lambda []                       = lambda
         curry (LambdaR oldB (a:as) expr) (e:es) =
           curry (LambdaR (insertM a (evaluate bindings e) oldB) as expr) es
-        curry _ _ = UndefinedStrR "Non-function called"
+        curry x _ = UndefinedStrR $ "Non-function called: " ++ show x
 
 -- Evaluates a single expression.
 evalInternal = (evaluate emptyM) . head . parse . tokenize
