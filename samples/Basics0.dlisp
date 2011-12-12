@@ -1,0 +1,30 @@
+;; RUN: ../dlisp <file>
+
+;; Computes the list of factors of numbers.
+(let ((factorize (Y (lambda (self n current)
+                      (if (> current n)
+                          null
+                          (let ((rest (self n (+ 1 current))))
+                            (if (zerop (% n current))
+                                (cons current rest)
+                                rest)))))))
+  (list (factorize 126 1)
+;; EXPECT: [[[1,2,3,6,7,9,14,18,21,42,63,126], \
+        (factorize 5 1)
+;; EXPECT: [1,5], \
+        (factorize 140 1)))
+;; EXPECT: [1,2,4,5,7,10,14,20,28,35,70,140]], \
+
+;; Checks if `number` is prime
+(let ((check (Y (lambda (self n current)
+                  (if (>= current (/ n 2))
+                      true
+                      (if (zerop (% n current))
+                          false
+                          (self n (+ 1 current))))))))
+  (list (check 7 2)
+;; EXPECT: [True, \
+        (check 15 2)
+;; EXPECT: False, \
+        (check 39 2)))
+;; EXPECT: False]]
