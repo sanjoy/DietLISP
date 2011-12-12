@@ -3,6 +3,7 @@ module Semantics(evaluate, eval) where
 {- Denotational semantics-like reduction rules.  -}
 
 import Lexer
+import Origin
 import Parser
 
 import Data.Map(Map, empty, fromList, insert, lookup)
@@ -178,11 +179,8 @@ evaluate bindings (ListE [SymE "boolp", a]) =
 -- (let ((var0 value0) (var1 value1) ...) expression)
 -- :: typeof (expression)
 evaluate bindings (ListE [SymE "let", ListE variables, expression]) =
-  let newBindings = foldl addBindings bindings variables
+  let newBindings = parseBindings bindings variables
   in evaluate newBindings expression
-    where
-      addBindings oldMap (ListE [SymE v, e]) =
-        insertM v (evaluate oldMap e) oldMap
 
 -- (lambda (a b c ...) expression)
 evaluate bindings (ListE [SymE "lambda", ListE args, expression]) =
@@ -206,26 +204,14 @@ evaluate bindings (ListE generic) =
 -- Evaluates a single expression.
 evalInternal = (evaluate emptyM) . head . parse . tokenize
 
--- The interpreter prelude.
-idExp    = evalInternal $ "(lambda (x) x)"
-yExp     = evalInternal $ "(lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x)))))"
-notExp   = evalInternal $ "(lambda (x) (if (== x true) false true))"
-zeroPExp = evalInternal $ "(lambda (x) (== x 0))"
-nullPExp = evalInternal $ "(lambda (x) (== x null))"
-mapExp   = evalInternal $ "((lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x))))) (lambda (self f l) (if (== null l) null (cons (f (head l)) (self f (tail l))))))"
-foldExp  = evalInternal $ "((lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x))))) (lambda (self f p l) (if (== null l) p (self f (f p (head l)) (tail l)))))"
-zipExp   = evalInternal $ "((lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x))))) (lambda (self f l0 l1) (if (|| (== null l0) (== nulll l1)) null (cons (f (head l0) (head l1)) (self f (tail l0) (tail l1))))))"
-rangeExp = evalInternal $ "((lambda (f) ((lambda (x) (f (x x))) (lambda (x) (f (x x))))) (lambda (self b e) (if (>= b e) null (cons b (self (+ 1 b) e)))))"
+-- Parse bindings from a list like ((var0 exp0) (var1 exp1) ...)
+parseBindings oldBindings varlist =
+  foldl addBindings oldBindings varlist
+  where
+    addBindings oldMap (ListE [SymE v, e]) =
+      insertM v (evaluate oldMap e) oldMap
 
-builtins = fromList [("id", idExp),
-                     ("Y", yExp),
-                     ("not", notExp),
-                     ("zerop", zeroPExp),
-                     ("nullp", nullPExp),
-                     ("map", mapExp),
-                     ("fold", foldExp),
-                     ("zip", zipExp),
-                     ("range", rangeExp)]
+builtins = parseBindings emptyM $ reverse $ parse $ tokenize origin
 
 -- Essentially the complete external interface for this module.  Evaluates
 -- a string in a fresh context.
