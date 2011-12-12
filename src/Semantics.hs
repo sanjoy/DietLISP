@@ -220,4 +220,5 @@ builtins = parseBindings emptyM $ reverse $ parse $ tokenize origin
 -- Essentially the complete external interface for this module.  Evaluates
 -- a string in a fresh context.
 eval :: String -> [Result]
-eval = (map $ evaluate builtins) . parse . tokenize
+eval s = let results = map (evaluate builtins) $ parse $ tokenize s
+         in reverse results
