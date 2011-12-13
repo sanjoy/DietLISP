@@ -30,7 +30,7 @@ instance Show Result where
   show (IntegerR i)      = show i
   show (BooleanR True)   = "true"
   show (BooleanR False)  = "false"
-  show (ListR l)         = "(" ++ (intercalate ", " $ map show l) ++ ")"
+  show (ListR l)         = "(" ++ (intercalate " " $ map show l) ++ ")"
   show (LambdaR _ _ _)   = "## Function Object ##"
   show (UndefinedStrR s) = "⊥ (" ++ s ++ ")"
 
