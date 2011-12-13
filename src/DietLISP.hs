@@ -5,15 +5,19 @@ import Lexer
 import Parser
 import Semantics
 
+import Data.List(intercalate)
 import System(getArgs)
 import System.IO
 
 runFile fileName = do
   handle <- openFile fileName ReadMode
   contents <- hGetContents handle
-  Control.Exception.catch (putStrLn $ show $ eval contents)
+  Control.Exception.catch (putStrLn $ showResults $ eval contents)
         ((\e->putStrLn "⊥")::Control.Exception.PatternMatchFail->IO())
   hClose handle
+    where
+      showResults :: (Show a) => [a] -> String
+      showResults s = intercalate "\n" $ map show s
 
 usage = do
   version

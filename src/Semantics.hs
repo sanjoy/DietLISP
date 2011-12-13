@@ -7,6 +7,7 @@ import Origin
 import Parser
 
 import Data.Map(Map, empty, fromList, toList, insert, lookup)
+import Data.List(intercalate)
 
 -- Pretty way to prevent clashes.
 emptyM  = empty
@@ -29,7 +30,7 @@ instance Show Result where
   show (IntegerR i)      = show i
   show (BooleanR True)   = "true"
   show (BooleanR False)  = "false"
-  show (ListR l)         = show l
+  show (ListR l)         = "(" ++ (intercalate ", " $ map show l) ++ ")"
   show (LambdaR _ _ _)   = "## Function Object ##"
   show (UndefinedStrR s) = "⊥ (" ++ s ++ ")"
 
