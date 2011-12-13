@@ -21,7 +21,7 @@ type Bindings = Map String Result
 -- An expression evaluates to this type.
 data Result = UndefinedR | IntegerR Integer | BooleanR Bool | ListR [Result]
             | LambdaR Bindings {- Closure -} [String] {- Args -}  Exp {- Body -}
-            | UndefinedStrR String
+            | SymbolR Exp | MacroR Bindings Exp | UndefinedStrR String
               deriving(Eq)
 
 -- Prettier display
@@ -32,6 +32,11 @@ instance Show Result where
   show (BooleanR False)  = "false"
   show (ListR l)         = "(" ++ (intercalate " " $ map show l) ++ ")"
   show (LambdaR _ _ _)   = "## Function Object ##"
+  show (MacroR _ _)      = "## Macro Object ##"
+  show (SymbolR (SymE s)) = "'" ++ s
+  show (SymbolR (IntegerE i)) = show i
+  show (SymbolR (BooleanE True)) = "true"
+  show (SymbolR (BooleanE False)) = "false"
   show (UndefinedStrR s) = "⊥ (" ++ s ++ ")"
 
 -- Fold OPERANDS (assumed integers) using OPERATION seeding with BEGIN in
@@ -182,6 +187,12 @@ evaluate bindings (ListE [SymE "boolp", a]) =
     BooleanR _ -> BooleanR True
     otherwise  -> BooleanR False
 
+-- (symbolp a)
+evaluate bindings (ListE [SymE "symbolp", a]) =
+  case evaluate bindings a of
+    SymbolR _ -> BooleanR True
+    otherwise -> BooleanR False
+
 -- (let ((var0 value0) (var1 value1) ...) expression)
 -- :: typeof (expression)
 evaluate bindings (ListE [SymE "let", ListE variables, expression]) =
@@ -194,19 +205,33 @@ evaluate bindings (ListE [SymE "lambda", ListE args, expression]) =
     where
       extract (SymE s) = s
 
--- (lambda arg0 arg1 ...)
+-- (quote a)
+evaluate bindings (ListE [SymE "sym", x]) = quote x
+  where
+    quote (ListE l) = UndefinedStrR $ "Can't quote a list: " ++ (show l)
+    quote x         = SymbolR x
+
 evaluate bindings (ListE []) = ListR []
+
+-- Macro and function calls
 evaluate bindings (ListE generic) =
   let function = evaluate bindings $ head generic
       args = tail generic
   in
-    curry function args
+    case function of
+      all@(LambdaR  _ _ _) -> curry all args
+      all@(MacroR b exp)   ->
+        let newAST = evaluate (insertM "ast" (quote $ ListE args) b) exp
+            uQuotedAST = unquote newAST
+        in evaluate bindings uQuotedAST
       where
         curry (LambdaR oldB [] expression) [] = evaluate oldB expression
         curry lambda []                       = lambda
         curry (LambdaR oldB (a:as) expr) (e:es) =
           curry (LambdaR (insertM a (evaluate bindings e) oldB) as expr) es
         curry x _ = UndefinedStrR $ "Non-function called: " ++ show x
+        quote (ListE l)    = ListR $ map quote l
+        quote x            = SymbolR x
 
 -- Evaluates a single expression.
 evalInternal = (evaluate emptyM) . head . parse . tokenize
@@ -226,6 +251,13 @@ mapContext f a [] = []
 mapContext f a (x:xs) = let (ctx, value) = f a x
                         in (value:mapContext f ctx xs)
 
+-- Unquotes expression
+unquote :: Result -> Exp
+unquote (IntegerR i) = IntegerE i
+unquote (BooleanR b) = BooleanE b
+unquote (SymbolR x)  = x
+unquote (ListR l)    = ListE $ map unquote l
+
 evalDefun :: Bindings -> Exp -> (Bindings, Result)
 -- (defun foo bar baz) == (set foo (Y (lambda foo bar baz)))
 evalDefun bindings (ListE [SymE "defun", SymE name, ListE args, expression]) =
@@ -233,6 +265,10 @@ evalDefun bindings (ListE [SymE "defun", SymE name, ListE args, expression]) =
       recursiveL = ListE [SymE "Y", lambda]
       value = evaluate bindings recursiveL
   in (insertM name value bindings, ListR [])
+evalDefun bindings (ListE [SymE "defmacro", SymE name, expression]) =
+  let macro = MacroR bindings expression
+  in (insertM name macro bindings, ListR [])
+
 evalDefun bindings expression = (bindings, evaluate bindings expression)
 
 -- Essentially the complete external interface for this module.  Evaluates

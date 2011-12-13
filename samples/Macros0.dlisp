@@ -1,0 +1,30 @@
+;; Tests the macro facilities
+;; RUN: ../dlisp <file>
+
+(defun do-cond (ast)
+  (if (nullp ast)
+      null
+      (let ((current (head ast))
+            (rest (tail ast))
+            (condition (head current))
+            (then (head (tail current))))
+        (list (sym if)
+         condition then (do-cond rest)))))
+;; EXPECT: ()
+
+(defmacro cond (do-cond ast))
+;; EXPECT: ()
+
+(defun cond-test (x)
+  (cond
+    ((> x 0) 2)
+    ((== x 0) 1)
+    ((< x 0) 0)))
+;; EXPECT: ()
+
+(cond-test 5)
+;; EXPECT: 2
+(cond-test 0)
+;; EXPECT: 1
+(cond-test (- 0 5))
+;; EXPECT: 0
