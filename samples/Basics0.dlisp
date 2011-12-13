@@ -23,8 +23,8 @@
                           false
                           (self n (+ 1 current))))))))
   (list (check 7 2)
-;; EXPECT: [True, \
+;; EXPECT: [true, \
         (check 15 2)
-;; EXPECT: False, \
+;; EXPECT: false, \
         (check 39 2)))
-;; EXPECT: False]]
+;; EXPECT: false]]

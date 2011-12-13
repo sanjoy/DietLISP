@@ -27,7 +27,8 @@ data Result = UndefinedR | IntegerR Integer | BooleanR Bool | ListR [Result]
 instance Show Result where
   show UndefinedR        = "⊥"
   show (IntegerR i)      = show i
-  show (BooleanR b)      = show b
+  show (BooleanR True)   = "true"
+  show (BooleanR False)  = "false"
   show (ListR l)         = show l
   show (LambdaR _ _ _)   = "## Function Object ##"
   show (UndefinedStrR s) = "⊥ (" ++ s ++ ")"
