@@ -34,6 +34,9 @@ def combine_strings(strs):
             combined = combined + s
     return combined
 
+def process_output(str):
+    return str.replace('\\b', ' ').replace('\\n', '\n')
+
 def parse(file_obj):
     command = None
     outputs = []
@@ -49,7 +52,8 @@ def parse(file_obj):
                 print 'Multiple `RUN` strings.'
                 return None
         elif s_line.startswith(output_prefix):
-            outputs.append(s_line[len(output_prefix):].lstrip())
+            op = s_line[len(output_prefix):].lstrip()
+            outputs.append(process_output(op))
 
     if command is None:
         print 'Could not find `RUN` string.'
