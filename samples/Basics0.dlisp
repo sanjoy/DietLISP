@@ -34,3 +34,15 @@
       (adds-42 (make-adder 42)))
   (adds-42 5))
 ;; EXPECT: 47
+
+(defun add-5 (x)
+  (+ 5 x))
+
+(add-5 10)
+
+(defun factorial (n)
+  (if (== n 0)
+      1
+      (* n (factorial (- n 1)))))
+
+(factorial 5)

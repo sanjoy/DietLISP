@@ -219,8 +219,23 @@ parseBindings oldBindings varlist =
 
 builtins = parseBindings emptyM $ reverse $ parse $ tokenize origin
 
+-- Utility function for mapping with some context
+mapContext :: (a -> b -> (a, c)) -> a -> [b] -> [c]
+mapContext f a [] = []
+mapContext f a (x:xs) = let (ctx, value) = f a x
+                        in (value:mapContext f ctx xs)
+
+evalDefun :: Bindings -> Exp -> (Bindings, Result)
+-- (defun foo bar baz) == (set foo (Y (lambda foo bar baz)))
+evalDefun bindings (ListE [SymE "defun", SymE name, ListE args, expression]) =
+  let lambda = ListE [SymE "lambda", ListE (SymE name:args), expression]
+      recursiveL = ListE [SymE "Y", lambda]
+      value = evaluate bindings recursiveL
+  in (insertM name value bindings, ListR [])
+evalDefun bindings expression = (bindings, evaluate bindings expression)
+
 -- Essentially the complete external interface for this module.  Evaluates
 -- a string in a fresh context.
 eval :: String -> [Result]
-eval s = let results = map (evaluate builtins) $ parse $ tokenize s
-         in reverse results
+eval s = let results = mapContext evalDefun builtins $ reverse $ parse $ tokenize s
+         in results
