@@ -28,3 +28,9 @@
 ;; EXPECT: \bfalse \
         (check 39 2)))
 ;; EXPECT: \bfalse)
+
+(let ((make-adder (lambda (x y)
+                    (+ x y)))
+      (adds-42 (make-adder 42)))
+  (adds-42 5))
+;; EXPECT: 47
