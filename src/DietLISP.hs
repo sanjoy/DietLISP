@@ -9,11 +9,14 @@ import Data.List(intercalate)
 import System(getArgs)
 import System.IO
 
-runFile fileName = do
+runFile fileName debug = do
   handle <- openFile fileName ReadMode
   contents <- hGetContents handle
-  Control.Exception.catch (putStrLn $ showResults $ eval contents)
-        ((\e->putStrLn "⊥")::Control.Exception.PatternMatchFail->IO())
+  if not debug then
+      Control.Exception.catch (putStrLn $ showResults $ eval contents)
+         ((\e->putStrLn "⊥")::Control.Exception.PatternMatchFail->IO())
+      else
+        putStrLn $ showResults $ eval contents
   hClose handle
     where
       showResults :: (Show a) => [a] -> String
@@ -29,7 +32,8 @@ version = do
 main = do
   args <- getArgs
   case args of
-    ["--version"] -> version
-    ["--usage"]   -> usage
-    [fileName]    -> runFile fileName
-    otherwise     -> usage
+    ["--version"]         -> version
+    ["--usage"]           -> usage
+    [fileName]            -> runFile fileName False
+    ["--debug", fileName] -> runFile fileName True
+    otherwise             -> usage
