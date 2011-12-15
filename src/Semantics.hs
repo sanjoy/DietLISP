@@ -195,6 +195,7 @@ evaluate bindings (ListE [SymE "lambda", ListE args, expression]) =
       extract (SymE s) = s
 
 -- (lambda arg0 arg1 ...)
+evaluate bindings (ListE []) = ListR []
 evaluate bindings (ListE generic) =
   let function = evaluate bindings $ head generic
       args = tail generic
