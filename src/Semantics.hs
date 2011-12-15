@@ -222,8 +222,8 @@ evaluate bindings (ListE generic) =
       all@(LambdaR  _ _ _) -> curry all args
       all@(MacroR b exp)   ->
         let newAST = evaluate (insertM "ast" (quote $ ListE args) b) exp
-            uQuotedAST = unquote newAST
-        in evaluate bindings uQuotedAST
+            unQuotedAST = unquote newAST
+        in evaluate bindings unQuotedAST
       where
         curry (LambdaR oldB [] expression) [] = evaluate oldB expression
         curry lambda []                       = lambda
