@@ -2,6 +2,8 @@ module Lexer(tokenize, Token(..)) where
 
 {- A simple Lexer DietLISP. -}
 
+import Utils
+
 import Data.Char
 
 data Token = LParT | RParT | SymbolT String | IntegerT Integer
@@ -13,10 +15,15 @@ instance Show Token where
   show (SymbolT s) = s
   show (IntegerT i) = show i
 
-tokenize :: String -> [Token]
-tokenize [] = []
-tokenize ('(':rest) = LParT : (tokenize rest)
-tokenize (')':rest) = RParT : (tokenize rest)
+tokenize :: String -> Either String [Token]
+tokenize [] = Right []
+tokenize ('(':chars) = do
+  rest <- tokenize chars
+  return $ LParT:rest
+
+tokenize (')':chars) = do
+  rest <- tokenize chars
+  return $ RParT:rest
 
 -- A semicolon starts a comment that continues to the end of the line.
 tokenize (';':rest) = tokenize $ dropWhile (/= '\n') rest
@@ -27,27 +34,31 @@ tokenize all@(x:rest) =
   if isSpace x then
     tokenize rest
   else
-    if isDigit x then
-      let (integer, leftOvers) = parseInteger all
-      in (IntegerT $ read integer):(tokenize leftOvers)
-    else
+    if isDigit x then do
+      (integer, leftOvers) <- parseInteger all
+      let token = (IntegerT $ read integer)
+      rest <- tokenize leftOvers
+      return $ token:rest
+    else do
       let (symbolString, leftOvers) = parseSymbol all
-      in (SymbolT symbolString):(tokenize leftOvers)
+      let token = SymbolT symbolString
+      rest <- tokenize leftOvers
+      return $ token:rest
   where
 
   -- Breaks up the string into two parts.  The first part is a parseable
   -- integer and the second contains the remainder of the string.
-  parseInteger :: String -> (String, String)
+  parseInteger :: String -> Either String (String, String)
   parseInteger all@(x:xs) =
-    if isDigit x then
-      let (a, b) = parseInteger xs
-      in (x:a, b)
+    if isDigit x then do
+                   (a, b) <- parseInteger xs
+                   return (x:a, b)
     else
       if isSpace x || x == '(' || x == ')' then
-        ("", all)
+        Right ("", all)
       else
-        error "Bad integer"
-  parseInteger [] = ("", "")
+        Left $ "Found undesirable character " ++ [x] ++ " when parsing integer"
+  parseInteger [] = Right ("", "")
 
   -- Breaks up the string into two parts.  The first part is a valid symbol
   -- and the second part is the remainder of the string.
@@ -58,3 +69,4 @@ tokenize all@(x:rest) =
     else
       let (a, b) = parseSymbol xs
       in (x:a, b)
+  parseSymbol [] = error "parseSymbol [] should never be evaluated."

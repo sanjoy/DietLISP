@@ -1,4 +1,4 @@
-module Parser(Exp(..), parse) where
+module Parser(Exp(..), parse, fullParse) where
 
 {- A shift-reduce parser for DietLISP.  Haskell really shines in these
    sorts of things.  -}
@@ -14,23 +14,28 @@ data StackElement = ValueSE Exp -- A value on the stack
                   | MarkerSE    -- A marker signalling an open parenthesis
                     deriving(Show, Eq)
 
-parse :: [Token] -> [Exp]
+parse :: [Token] -> Either String [Exp]
 parse tokens = stateMachine tokens []
 
-stateMachine :: [Token] -> [StackElement] -> [Exp]
+stateMachine :: [Token] -> [StackElement] -> Either String [Exp]
 
-stateMachine [] values = map (\(ValueSE e)->e) values
+stateMachine [] values = mapM recover values
+  where
+    recover (ValueSE e) = Right e
+    recover _           = Left "Unbalanced parens:  extra '('"
 
 stateMachine (LParT:rest) stack = stateMachine rest (MarkerSE:stack)
 
-stateMachine (RParT:rest) stack =
-  stateMachine rest (ValueSE newExp:merge stack)
+stateMachine (RParT:rest) stack = do
+  (exps, stackLeft) <- findEnd stack
+  let value = ValueSE $ ListE $ reverse exps
+  stateMachine rest (value:stackLeft)
     where
-      newExp = ListE $ reverse expressions
-      expressions = map (\(ValueSE m)->m) $
-                    takeWhile (/= MarkerSE) stack
-      merge (MarkerSE:rest) = rest
-      merge (x:rest) = merge rest
+      findEnd [] = Left "Unbalanced parens:  extra ')'"
+      findEnd (MarkerSE:rest) = Right ([], rest)
+      findEnd (ValueSE x:xs) = do
+        (exps, stackLeft) <- findEnd xs
+        return ((x:exps), stackLeft)
 
 stateMachine (SymbolT s:rest) stack = stateMachine rest $ case s of
   "true"    -> (ValueSE $ BooleanE True):stack
@@ -39,3 +44,6 @@ stateMachine (SymbolT s:rest) stack = stateMachine rest $ case s of
 
 stateMachine (IntegerT i:rest) stack =
   stateMachine rest ((ValueSE $ IntegerE i):stack)
+
+fullParse :: String -> Either String [Exp]
+fullParse str = tokenize str >>= parse

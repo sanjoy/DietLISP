@@ -234,9 +234,6 @@ evaluate bindings (ListE generic) =
         quote (ListE l)    = ListR $ map quote l
         quote x            = SymbolR x
 
--- Evaluates a single expression.
-evalInternal = (evaluate emptyM) . head . parse . tokenize
-
 -- Parse bindings from a list like ((var0 exp0) (var1 exp1) ...)
 parseBindings oldBindings varlist =
   foldl addBindings oldBindings varlist
@@ -244,7 +241,12 @@ parseBindings oldBindings varlist =
     addBindings oldMap (ListE [SymE v, e]) =
       insertM v (evaluate oldMap e) oldMap
 
-builtins = parseBindings emptyM $ reverse $ parse $ tokenize origin
+builtins = let evaluated = do
+                 exps <- fullParse origin
+                 return $ parseBindings emptyM $ reverse exps
+           in case evaluated of
+                Right exps -> exps
+                Left  str  -> error $ "Evaluating Origin failed because of error " ++ str
 
 -- Unquotes expression
 unquote :: Result -> Exp
@@ -269,5 +271,9 @@ evalDefun bindings expression = (bindings, evaluate bindings expression)
 -- Essentially the complete external interface for this module.  Evaluates
 -- a string in a fresh context.
 eval :: String -> [Result]
-eval s = let results = mapContext evalDefun builtins $ reverse $ parse $ tokenize s
-         in results
+eval s = let result = do
+               exps <- fullParse s
+               return $ mapContext evalDefun builtins $ reverse exps
+         in case result of
+              Left error  -> [UndefinedStrR error]
+              Right value -> value
