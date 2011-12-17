@@ -5,6 +5,7 @@ module Semantics(evaluate, eval) where
 import Lexer
 import Origin
 import Parser
+import Utils
 
 import Data.Map(Map, empty, fromList, toList, insert, lookup)
 import Data.List(intercalate)
@@ -244,12 +245,6 @@ parseBindings oldBindings varlist =
       insertM v (evaluate oldMap e) oldMap
 
 builtins = parseBindings emptyM $ reverse $ parse $ tokenize origin
-
--- Utility function for mapping with some context
-mapContext :: (a -> b -> (a, c)) -> a -> [b] -> [c]
-mapContext f a [] = []
-mapContext f a (x:xs) = let (ctx, value) = f a x
-                        in (value:mapContext f ctx xs)
 
 -- Unquotes expression
 unquote :: Result -> Exp
