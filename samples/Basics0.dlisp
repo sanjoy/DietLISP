@@ -37,7 +37,7 @@
 
 (defun add-5 (x)
   (+ 5 x))
-;; EXPECT: ()
+;; EXPECT: 'add-5
 
 (add-5 10)
 ;; EXPECT: 15
@@ -46,7 +46,7 @@
   (if (== n 0)
       1
       (* n (factorial (- n 1)))))
-;; EXPECT: ()
+;; EXPECT: 'factorial
 
 (factorial 5)
 ;; EXPECT: 120

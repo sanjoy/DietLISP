@@ -3,7 +3,7 @@ module Parser(Exp(..), parse, fullParse) where
 {- A shift-reduce parser for DietLISP.  Haskell really shines in these
    sorts of things.  -}
 
-import Lexer
+import DLTokenizer
 
 -- DietLISP's AST.
 data Exp = ListE [Exp] | SymE String | IntegerE Integer
@@ -22,7 +22,7 @@ stateMachine :: [Token] -> [StackElement] -> Either String [Exp]
 stateMachine [] values = mapM recover values
   where
     recover (ValueSE e) = Right e
-    recover _           = Left "Unbalanced parens:  extra '('"
+    recover _           = Left "unbalanced parens:  extra '('"
 
 stateMachine (LParT:rest) stack = stateMachine rest (MarkerSE:stack)
 
@@ -31,7 +31,7 @@ stateMachine (RParT:rest) stack = do
   let value = ValueSE $ ListE $ reverse exps
   stateMachine rest (value:stackLeft)
     where
-      findEnd [] = Left "Unbalanced parens:  extra ')'"
+      findEnd [] = Left "unbalanced parens:  extra ')'"
       findEnd (MarkerSE:rest) = Right ([], rest)
       findEnd (ValueSE x:xs) = do
         (exps, stackLeft) <- findEnd xs

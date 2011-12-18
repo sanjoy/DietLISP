@@ -25,14 +25,6 @@ origin =
   \                 p                         \
   \               (self f (f p (head l))      \
   \                     (tail l))))))         \
-  \  (zip (Y (lambda (self f l0 l1)           \
-  \            (if (|| (== null l0)           \
-  \                    (== null l1))          \
-  \                null                       \
-  \              (cons (f (head l0)           \
-  \                       (head l1))          \
-  \                    (self f (tail l0)      \
-  \                          (tail l1)))))))  \
   \  (range (Y (lambda (self b e)             \
   \              (if (>= b e)                 \
   \                  null                     \

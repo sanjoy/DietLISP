@@ -16,17 +16,17 @@
         (list bind-fn expression (list (sym lambda)
                                        (list var)
                                        (form-expression bind-fn rest))))))
-;; EXPECT: ()
+;; EXPECT: 'form-expression
 
 (defmacro do
     (let ((bind-fn (head ast))
           (stmts (tail ast)))
       (form-expression bind-fn stmts)))
-;; EXPECT: ()
+;; EXPECT: 'do
 
 (defun bind-1 (a b)
   (b a))
-;; EXPECT: ()
+;; EXPECT: 'bind-1
 
 (do bind-1
     (set a 5)
@@ -37,7 +37,7 @@
   (if (nullp a)
       false
       (b a)))
-;; EXPECT: ()
+;; EXPECT: 'maybe-bind
 
 (defun predicate (number)
   (do maybe-bind
@@ -48,7 +48,7 @@
     (if (< number 0)
         null true)
     true))
-;; EXPECT: ()
+;; EXPECT: 'predicate
 
 (predicate 3)
 ;; EXPECT: true

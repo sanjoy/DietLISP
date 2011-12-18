@@ -1,7 +1,6 @@
 module Main(main) where
 
 import Control.Exception
-import Lexer
 import Parser
 import Semantics
 
@@ -12,11 +11,10 @@ import System.IO
 runFile fileName debug = do
   handle <- openFile fileName ReadMode
   contents <- hGetContents handle
-  if not debug then
-      Control.Exception.catch (putStrLn $ showResults $ eval contents)
-         ((\e->putStrLn "⊥")::Control.Exception.PatternMatchFail->IO())
-      else
-        putStrLn $ showResults $ eval contents
+  let results = eval contents
+  case results of
+    Left string -> putStrLn string
+    Right results -> putStrLn $ showResults results
   hClose handle
     where
       showResults :: (Show a) => [a] -> String

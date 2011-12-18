@@ -2,11 +2,12 @@ module Semantics(evaluate, eval) where
 
 {- Denotational semantics-like reduction rules.  -}
 
-import Lexer
+import DLTokenizer
 import Origin
 import Parser
 import Utils
 
+import Control.Monad(foldM, liftM)
 import Data.Map(Map, empty, fromList, toList, insert, lookup)
 import Data.List(intercalate)
 
@@ -20,260 +21,309 @@ lookupM = Data.Map.lookup
 type Bindings = Map String Result
 
 -- An expression evaluates to this type.
-data Result = UndefinedR | IntegerR Integer | BooleanR Bool | ListR [Result]
+data Result = IntegerR Integer
+            | BooleanR Bool
+            | ListR [Result]
+            | SymbolR Exp
             | LambdaR Bindings {- Closure -} [String] {- Args -}  Exp {- Body -}
-            | SymbolR Exp | MacroR Bindings Exp | UndefinedStrR String
+            | MacroR Bindings Exp
+            | UndefinedR String {- Error -}
+            | ThunkR Bindings Exp
               deriving(Eq)
 
 -- Prettier display
 instance Show Result where
-  show UndefinedR        = "⊥"
-  show (IntegerR i)      = show i
-  show (BooleanR True)   = "true"
-  show (BooleanR False)  = "false"
-  show (ListR l)         = "(" ++ (intercalate " " $ map show l) ++ ")"
-  show (LambdaR _ _ _)   = "## Function Object ##"
-  show (MacroR _ _)      = "## Macro Object ##"
-  show (SymbolR (SymE s)) = "'" ++ s
-  show (SymbolR (IntegerE i)) = show i
-  show (SymbolR (BooleanE True)) = "true"
-  show (SymbolR (BooleanE False)) = "false"
-  show (UndefinedStrR s) = "⊥ (" ++ s ++ ")"
+  show (IntegerR i)                = show i
+  show (BooleanR value)            = if value then "true" else "false"
+  show (ListR l)                   = "(" ++ (intercalate " " $ map show l) ++ ")"
+  show (SymbolR (SymE s))          = "'" ++ s
+  show (SymbolR (IntegerE i))      = show i
+  show (SymbolR (BooleanE value))  = if value then "true" else "false"
+  show (SymbolR (ListE _))         = error "There should be no SymbolR (ListE) instances!"
+  show (LambdaR _ _ bod)             = "## Function Object ##: " ++ (show bod)
+  show (MacroR _ _)                = "## Macro Object ##"
+  show (ThunkR _ _)                = "## Thunk Object ##"
+  show (UndefinedR s)              = "⊥ (" ++ s ++ ")"
+
+isUndef (UndefinedR _)  = True
+isUndef _               = False
+
+castListE _ (ListE es) = return es
+castListE string _     = Left string
+
+castSymE _ (SymE sym) = return sym
+castSymE string _     = Left string
 
 -- Fold OPERANDS (assumed integers) using OPERATION seeding with BEGIN in
 -- context BINDINGS.  Result in UndefinedR in case of operands of
 -- incorrect type, IntegerR otherwise.
-nAryOp bindings operands begin operation =
-  let integers = map (evaluate bindings) operands
-  in foldl evalOp (IntegerR begin) integers
+nAryOp bindings operands begin operation = do
+  integers <- mapM (evaluate bindings) operands
+  return $ foldl evalOp (IntegerR begin) integers
     where
       evalOp (IntegerR i) (IntegerR j) = (IntegerR $ operation i j)
       evalOp _ _                       =
-          UndefinedStrR $ "Attempted to apply integer operation to " ++
-                          "non-integer"
+          UndefinedR "attempted to apply integer operation to non-integers"
 
 -- Combine LEFT and RIGHT (both assumed integers) using OPERATION in
 -- context BINDINGS.  Result in UndefinedR in case of operands of
 -- incorrect type, IntegerR otherwise.
-binaryOp bindings left right operation =
-  evalOp (evaluate bindings left) (evaluate bindings right)
+binaryOp bindings operation (left, right) = do
+  eLeft <- evaluate bindings left
+  eRight <- evaluate bindings right
+  return $ evalOp eLeft eRight
     where
       evalOp (IntegerR i) (IntegerR j) = (IntegerR $ operation i j)
       evalOp _ _                       =
-          UndefinedStrR $ "Attempted to apply integer operation to " ++
-                          "non-integer"
+          UndefinedR "attempted to apply integer operation to non-integer"
 
 -- Compare LEFT and RIGHT (both assumed integers) using OPERATION in
 -- context BINDINGS.  Result in UndefinedR in case of operands of
 -- incorrect type, BooleanR otherwise.
-relatOp bindings left right operation =
-  evalOp (evaluate bindings left) (evaluate bindings right)
+relatOp bindings operation (left, right) = do
+  eLeft <- evaluate bindings left
+  eRight <- evaluate bindings right
+  return $ evalOp eLeft eRight
     where
       evalOp (IntegerR i) (IntegerR j) = (BooleanR $ operation i j)
       evalOp _ _                       =
-          UndefinedStrR $ "Attempted to apply integer operation to " ++
-                          "non-integer"
+          UndefinedR "attempted to apply integer operation to non-integer"
 
-evaluate :: Bindings -> Exp -> Result
+argsError name n = Left $ "`" ++ name ++ "` expects only " ++ n ++ " argument" ++
+                   (if name == "one" then "" else "s")
 
-evaluate _ (IntegerE i) = IntegerR i
-evaluate _ (BooleanE b) = BooleanR b
-evaluate _ (SymE "null") = ListR []
+extract1 :: String -> [Exp] -> Either String Exp
+extract1 _ [x]  = return x
+extract1 name _ = argsError name "one"
+
+extract2 :: String -> [Exp] -> Either String (Exp, Exp)
+extract2 _ [x, y] = return (x, y)
+extract2 name _   = argsError name "two"
+
+extract3 :: String -> [Exp] -> Either String (Exp, Exp, Exp)
+extract3 _ [x, y, z] = return (x, y, z)
+extract3 name _      = argsError name "three"
+
+evaluate :: Bindings -> Exp -> Either String Result
+
+evaluate _ (IntegerE i) = return $ IntegerR i
+evaluate _ (BooleanE b) = return $ BooleanR b
+evaluate _ (SymE "null") = return $ ListR []
 
 evaluate bindings (SymE s) =
   case lookupM s bindings of
-    Just result -> result
-    Nothing     -> UndefinedStrR $ resolutionError s bindings
+    Just (ThunkR oldB exp) -> evaluate oldB exp
+    Just result            -> return $ result
+    Nothing                -> return $ UndefinedR $ resolutionError s bindings
       where
         resolutionError symbol bindings =
           let list = show $ map fst $ toList bindings
-          in "Could not resolve symbol `" ++ symbol ++ "`\nI can see: " ++ list
+          in "can't resolve symbol `" ++ symbol ++ "`"
 
 -- Basic arithmetic.
 evaluate bindings (ListE (SymE "+":addends))  = nAryOp bindings addends 0 (+)
 evaluate bindings (ListE (SymE "*":addends))  = nAryOp bindings addends 1 (*)
-evaluate bindings (ListE [SymE "-", a, b])    = binaryOp bindings a b (-)
-evaluate bindings (ListE [SymE "/", a, b])    = binaryOp bindings a b div
-evaluate bindings (ListE [SymE "%", a, b])    = binaryOp bindings a b mod
+evaluate bindings (ListE (SymE "-":ops))      = extract2 "-" ops >>= binaryOp bindings (-)
+evaluate bindings (ListE (SymE "/":ops))      = extract2 "/" ops >>= binaryOp bindings div
+evaluate bindings (ListE (SymE "%":ops))      = extract2 "%" ops >>= binaryOp bindings mod
 
 -- Relational arithmetic
-evaluate bindings (ListE [SymE ">", a, b])    = relatOp bindings a b (>)
-evaluate bindings (ListE [SymE ">=", a, b])   = relatOp bindings a b (>=)
-evaluate bindings (ListE [SymE "<", a, b])    = relatOp bindings a b (<)
-evaluate bindings (ListE [SymE "<=", a, b])   = relatOp bindings a b (<=)
+evaluate bindings (ListE (SymE ">":ops))   = extract2 ">"  ops >>= relatOp bindings (>)
+evaluate bindings (ListE (SymE ">=":ops))  = extract2 ">=" ops >>= relatOp bindings (>=)
+evaluate bindings (ListE (SymE "<":ops))   = extract2 "<"  ops >>= relatOp bindings (<)
+evaluate bindings (ListE (SymE "<=":ops))  = extract2 "<=" ops >>= relatOp bindings (<=)
 
 -- (if condition true-value false-value)
 -- :: typeof (true-value) == typeof (false-value)
-evaluate bindings (ListE [SymE "if", condition, a, b]) =
-  evaluateIf (evaluate bindings condition) a b
+evaluate bindings (ListE (SymE "if":operands)) = do
+  (condition, t, e) <- extract3 "if" operands
+  eCondition <- evaluate bindings condition
+  evaluateIf eCondition t e
     where
-      evaluateIf (BooleanR True) a _  = evaluate bindings a
-      evaluateIf (BooleanR False) _ b = evaluate bindings b
-      evaluateIf _                _ _ =
-          UndefinedStrR "Condition non-boolean in `if`"
+      evaluateIf (BooleanR True) a _   = evaluate bindings a
+      evaluateIf (BooleanR False)  _ b = evaluate bindings b
+      evaluateIf _  _  _ = return $ UndefinedR "condition non-boolean in `if`"
 
 -- (cons head tail)
 -- :: ([x], x) -> [x]
-evaluate bindings (ListE [SymE "cons", head, tail]) =
-  evaluateCons (evaluate bindings head) (evaluate bindings tail)
+evaluate bindings (ListE (SymE "cons":operands)) = do
+  (head, tail) <- extract2 "cons" operands
+  eHead <- evaluate bindings head
+  eTail <- evaluate bindings tail
+  return $ evaluateCons eHead eTail
     where
       evaluateCons :: Result -> Result -> Result
-      evaluateCons a (ListR []) = ListR [a]
-      evaluateCons a (ListR (b:rest)) = ListR (a:b:rest)
+      evaluateCons a (ListR b) = ListR (a:b)
+      evaluateCons _ _         = UndefinedR "you can cons only to a list"
 
 -- (head list)
 -- :: [x] -> x
-evaluate bindings (ListE [SymE "head", list]) =
-  evaluateHead $ evaluate bindings list
+evaluate bindings (ListE (SymE "head":operands)) = do
+  list <- extract1 "head" operands
+  eList <- evaluate bindings list
+  return $ evaluateHead eList
     where
       evaluateHead (ListR (x:_)) = x
-      evaluateHead _             =
-          UndefinedStrR "Non-list type in `head`"
+      evaluateHead (ListR [])    = UndefinedR "can't take head of empty list"
+      evaluateHead _             = UndefinedR "can't take head of non-list"
 
 -- (tail list)
 -- :: [x] -> [x]
-evaluate bindings (ListE [SymE "tail", list]) =
-  evaluateTail $ evaluate bindings list
+evaluate bindings (ListE (SymE "tail":operands)) = do
+  list <- extract1 "head" operands
+  eList <- evaluate bindings list
+  return $ evaluateTail eList
     where
       evaluateTail (ListR (_:xs)) = ListR xs
-      evaluateTail _              =
-          UndefinedStrR "Non-list type in `tail`"
+      evaluateTail (ListR [])     = UndefinedR "can't take tail of empty list"
+      evaluateTail _              = UndefinedR "can't take tail of non-list"
 
 -- (list x0 x1 x2 ...)
-evaluate bindings (ListE (SymE "list":rest)) =
-  ListR $ map (evaluate bindings) rest
+evaluate bindings (ListE (SymE "list":rest)) = do
+  results <- mapM (evaluate bindings) rest
+  return $ ListR results
 
 -- (== a b)
 -- :: x -> x -> Bool
-evaluate bindings (ListE [SymE "==", a, b]) =
-  let left  = evaluate bindings a
-      right = evaluate bindings b
-  in if left == UndefinedR || right == UndefinedR
-     then UndefinedStrR "`⊥` passed as `==` operand"
-     else BooleanR $ left == right
-
--- (&& a b)
--- :: Bool -> Bool -> Bool (Short-circuted)
-evaluate bindings (ListE [SymE "&&", a, b]) =
-  let left = evaluate bindings a
-  in if left == BooleanR False then BooleanR False else
-         -- Force fail if b is not a BooleanR
-         let (BooleanR x) = evaluate bindings b
-         in BooleanR x
-
--- (|| a b)
--- :: Bool -> Bool -> Bool (Short-circuited)
-evaluate bindings (ListE [SymE "||", a, b]) =
-  let left = evaluate bindings a
-  in if left == BooleanR True then BooleanR True else
-         -- Force fail if b is not a BooleanR
-         let (BooleanR x) = evaluate bindings b
-         in BooleanR x
+evaluate bindings (ListE (SymE "==":operands)) = do
+  (left, right) <- extract2 "==" operands
+  eLeft <- evaluate bindings left
+  eRight <- evaluate bindings right
+  if isUndef eLeft || isUndef eRight then
+      return $ UndefinedR "`⊥` passed as `==` operand"
+      else return $ BooleanR $ eLeft == eRight
 
 -- (integerp a)
-evaluate bindings (ListE [SymE "integerp", a]) =
-  case evaluate bindings a of
-    IntegerR _ -> BooleanR True
-    otherwise  -> BooleanR False
+evaluate bindings (ListE (SymE "integerp":operands)) = do
+  extract1 "integerp" operands >>= evaluate bindings >>= return . integerp
+    where
+      integerp (IntegerR _) = BooleanR True
+      integerp _            = BooleanR False
 
 -- (listp a)
-evaluate bindings (ListE [SymE "listp", a]) =
-  case evaluate bindings a of
-    ListR _    -> BooleanR True
-    otherwise  -> BooleanR False
+evaluate bindings (ListE (SymE "listp":operands)) =
+  extract1 "listp" operands >>= evaluate bindings >>= return . listp
+    where
+      listp (ListR _) = BooleanR True
+      listp _         = BooleanR False
 
 -- (boolp a)
-evaluate bindings (ListE [SymE "boolp", a]) =
-  case evaluate bindings a of
-    BooleanR _ -> BooleanR True
-    otherwise  -> BooleanR False
+evaluate bindings (ListE (SymE "boolp":operands)) =
+  extract1 "boolp" operands >>= evaluate bindings >>= return . boolp
+    where
+      boolp (BooleanR _) = BooleanR True
+      boolp _            = BooleanR False
 
 -- (symbolp a)
-evaluate bindings (ListE [SymE "symbolp", a]) =
-  case evaluate bindings a of
-    SymbolR _ -> BooleanR True
-    otherwise -> BooleanR False
+evaluate bindings (ListE (SymE "symbolp":operands)) =
+  extract1 "symbolp" operands >>= evaluate bindings >>= return . symbolp
+    where
+      symbolp (SymbolR _) = BooleanR True
+      symbolp _           = BooleanR False
 
 -- (let ((var0 value0) (var1 value1) ...) expression)
 -- :: typeof (expression)
-evaluate bindings (ListE [SymE "let", ListE variables, expression]) =
-  let newBindings = parseBindings bindings variables
-  in evaluate newBindings expression
+evaluate bindings (ListE (SymE "let":rest)) =
+  do
+    (vars, expression) <- extract2 "let" rest
+    variables <- castListE "syntax error in `let` statement" vars
+    newBindings <- parseBindings bindings variables
+    evaluate newBindings expression
 
 -- (lambda (a b c ...) expression)
-evaluate bindings (ListE [SymE "lambda", ListE args, expression]) =
-  LambdaR bindings (map extract args) expression
+evaluate bindings (ListE (SymE "lambda":rest)) = do
+  (args, expression) <- extract2 "lambda" rest
+  arguments <- castListE "`lambda` should be followed by a list of arguments" args
+  textArgs <- mapM (castSymE errorMsg) arguments
+  return $ LambdaR bindings textArgs expression
     where
-      extract (SymE s) = s
+      errorMsg = "`lambda` can only have vanilla symbols as arguments"
 
 -- (quote a)
-evaluate bindings (ListE [SymE "sym", x]) = quote x
-  where
-    quote (ListE l) = UndefinedStrR $ "Can't quote a list: " ++ (show l)
-    quote x         = SymbolR x
+evaluate bindings (ListE (SymE "sym":rest)) = do
+  atom <- extract1 "sym" rest
+  case atom of
+    ListE l -> return $ UndefinedR $ "can't quote a list: " ++ (show l)
+    atom    -> return $ SymbolR atom
 
-evaluate bindings (ListE []) = ListR []
+evaluate bindings (ListE []) = return $ ListR []
 
 -- Macro and function calls
-evaluate bindings (ListE generic) =
-  let function = evaluate bindings $ head generic
-      args = tail generic
-  in
-    case function of
-      all@(LambdaR  _ _ _) -> curry all args
-      all@(MacroR b exp)   ->
-        let newAST = evaluate (insertM "ast" (quote $ ListE args) b) exp
-            unQuotedAST = unquote newAST
-        in evaluate bindings unQuotedAST
-      where
-        curry (LambdaR oldB [] expression) [] = evaluate oldB expression
-        curry lambda []                       = lambda
-        curry (LambdaR oldB (a:as) expr) (e:es) =
-          curry (LambdaR (insertM a (evaluate bindings e) oldB) as expr) es
-        curry x _ = UndefinedStrR $ "Non-function called: " ++ show x
-        quote (ListE l)    = ListR $ map quote l
-        quote x            = SymbolR x
+evaluate bindings (ListE (functionExpr:args)) = do
+  function <- evaluate bindings functionExpr
+  case function of
+    all@(LambdaR _ _ _) -> curry all args
+    all@(MacroR b expr) -> do
+                  newAST <- evaluate (insertM "ast" (quote $ ListE args) b) expr
+                  let unQuotedAST = unquote newAST
+                  evaluate bindings unQuotedAST
+    otherwise           -> return $ UndefinedR $ "cannot execute expression `" ++ (show function) ++ "`"
+    where
+      curry (LambdaR oldB [] expression) [] = evaluate oldB expression
+      curry lambda []                       = return lambda
+      curry (LambdaR oldB (formalA:formalAs) expr) (arg:args) =
+          do
+            let eArg = ThunkR bindings arg
+            curry (LambdaR (insertM formalA eArg oldB) formalAs expr) args
+      curry _ _ = error "curry should only be evaluated after proper argument checking!"
+      quote (ListE l)    = ListR $ map quote l
+      quote x            = SymbolR x
 
 -- Parse bindings from a list like ((var0 exp0) (var1 exp1) ...)
 parseBindings oldBindings varlist =
-  foldl addBindings oldBindings varlist
+  foldM addBindings oldBindings varlist
   where
-    addBindings oldMap (ListE [SymE v, e]) =
-      insertM v (evaluate oldMap e) oldMap
+    addBindings oldMap (ListE [SymE v, e]) = do
+      let value = ThunkR oldMap e
+      return $ insertM v value oldMap
+    addBindings _ list = Left $ "invalid binding syntax: `" ++ (show list) ++ "`"
 
 builtins = let evaluated = do
                  exps <- fullParse origin
-                 return $ parseBindings emptyM $ reverse exps
+                 parseBindings emptyM $ reverse exps
            in case evaluated of
                 Right exps -> exps
-                Left  str  -> error $ "Evaluating Origin failed because of error " ++ str
+                Left  str  -> error $ "evaluating Origin failed because of error " ++ str
 
--- Unquotes expression
+-- Unquotes a Result
 unquote :: Result -> Exp
 unquote (IntegerR i) = IntegerE i
 unquote (BooleanR b) = BooleanE b
 unquote (SymbolR x)  = x
 unquote (ListR l)    = ListE $ map unquote l
+unquote _            = error "unquoting arbitrary values is a sin!"
 
-evalDefun :: Bindings -> Exp -> (Bindings, Result)
+evalDefun :: Bindings -> Exp -> Either String (Bindings, Result)
 -- (defun foo bar baz) == (set foo (Y (lambda foo bar baz)))
-evalDefun bindings (ListE [SymE "defun", SymE name, ListE args, expression]) =
-  let lambda = ListE [SymE "lambda", ListE (SymE name:args), expression]
-      recursiveL = ListE [SymE "Y", lambda]
-      value = evaluate bindings recursiveL
-  in (insertM name value bindings, ListR [])
-evalDefun bindings (ListE [SymE "defmacro", SymE name, expression]) =
-  let macro = MacroR bindings expression
-  in (insertM name macro bindings, ListR [])
+evalDefun bindings (ListE (SymE "defun":rest)) = do
+  (name, args, expr) <- extract3 "defun" rest
+  nameText <- castSymE "a `defun` needs to have a symbol as its name" name
+  arguments <- castListE "the second argument to a `defun` is an argument list" args
+  let lambda = ListE [SymE "lambda", ListE (name:arguments), expr]
+  let recursiveL = ListE [SymE "Y", lambda]
+  value <- evaluate bindings recursiveL
+  return (insertM nameText value bindings, SymbolR name)
 
-evalDefun bindings expression = (bindings, evaluate bindings expression)
+evalDefun bindings (ListE (SymE "defmacro":rest)) = do
+  (name, expr) <- extract2 "defmacro" rest
+  nameText <- castSymE "a `defmacro` needs to have a symbol as its name" name
+  let macro = MacroR bindings expr
+  return (insertM nameText macro bindings, SymbolR name)
+
+evalDefun bindings expression =  do
+  eExpr <- evaluate bindings expression
+  return (bindings, eExpr)
+
+mapMContext :: (Monad m) => (a -> b -> m (a, c)) -> a -> [b] -> m [c]
+mapMContext _ _ [] = return []
+mapMContext f a (b:bs) = do
+  (newSeed, this) <- f a b
+  rest <- mapMContext f newSeed bs
+  return (this:rest)
 
 -- Essentially the complete external interface for this module.  Evaluates
 -- a string in a fresh context.
-eval :: String -> [Result]
-eval s = let result = do
-               exps <- fullParse s
-               return $ mapContext evalDefun builtins $ reverse exps
-         in case result of
-              Left error  -> [UndefinedStrR error]
-              Right value -> value
+eval :: String -> Either String [Result]
+eval s = do
+   exps <- fullParse s
+   mapMContext evalDefun builtins $ reverse exps

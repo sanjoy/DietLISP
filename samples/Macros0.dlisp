@@ -10,17 +10,17 @@
             (then (head (tail current))))
         (list (sym if)
          condition then (do-cond rest)))))
-;; EXPECT: ()
+;; EXPECT: 'do-cond
 
 (defmacro cond (do-cond ast))
-;; EXPECT: ()
+;; EXPECT: 'cond
 
 (defun cond-test (x)
   (cond
     ((> x 0) 2)
     ((== x 0) 1)
     ((< x 0) 0)))
-;; EXPECT: ()
+;; EXPECT: 'cond-test
 
 (cond-test 5)
 ;; EXPECT: 2

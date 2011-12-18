@@ -1,4 +1,4 @@
-module Lexer(tokenize, Token(..)) where
+module DLTokenizer(tokenize, Token(..)) where
 
 {- A simple Lexer DietLISP. -}
 
@@ -57,7 +57,7 @@ tokenize all@(x:rest) =
       if isSpace x || x == '(' || x == ')' then
         Right ("", all)
       else
-        Left $ "Found undesirable character " ++ [x] ++ " when parsing integer"
+        Left $ "found non-digit " ++ [x] ++ " when parsing integer"
   parseInteger [] = Right ("", "")
 
   -- Breaks up the string into two parts.  The first part is a valid symbol
