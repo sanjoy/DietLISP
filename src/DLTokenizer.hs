@@ -30,43 +30,33 @@ tokenize (';':rest) = tokenize $ dropWhile (/= '\n') rest
 
 -- Check if the current character starts an integer.  Otherwise it starts
 -- a symbol
-tokenize all@(x:rest) =
-  if isSpace x then
-    tokenize rest
-  else
-    if isDigit x then do
-      (integer, leftOvers) <- parseInteger all
-      let token = (IntegerT $ read integer)
-      rest <- tokenize leftOvers
-      return $ token:rest
-    else do
-      let (symbolString, leftOvers) = parseSymbol all
-      let token = SymbolT symbolString
-      rest <- tokenize leftOvers
-      return $ token:rest
+tokenize all@(x : rest)
+  | isSpace x = tokenize rest
+  | isDigit x =
+      do (integer, leftOvers) <- parseInteger all
+         let token = IntegerT $ read integer
+         rest <- tokenize leftOvers
+         return $ token:rest
+  | otherwise =
+    do let (symbolString, leftOvers) = parseSymbol all
+       rest <- tokenize leftOvers
+       return $ (SymbolT symbolString):rest
+
   where
 
   -- Breaks up the string into two parts.  The first part is a parseable
   -- integer and the second contains the remainder of the string.
-  parseInteger :: String -> Either String (String, String)
-  parseInteger all@(x:xs) =
-    if isDigit x then do
-                   (a, b) <- parseInteger xs
-                   return (x:a, b)
-    else
-      if isSpace x || x == '(' || x == ')' then
-        Right ("", all)
-      else
-        Left $ "found non-digit " ++ [x] ++ " when parsing integer"
-  parseInteger [] = Right ("", "")
+      parseInteger :: String -> Either String (String, String)
+      parseInteger all@(x : xs)
+        | isDigit x = parseInteger xs >>= (\(a, b)->return (x:a, b))
+        | isSpace x || x == '(' || x == ')' = Right ("", all)
+        | otherwise =  Left $ "found non-digit " ++ [x] ++ " when parsing integer"
 
-  -- Breaks up the string into two parts.  The first part is a valid symbol
-  -- and the second part is the remainder of the string.
-  parseSymbol :: String -> (String, String)
-  parseSymbol all@(x:xs) =
-    if isSpace x || x == '(' || x == ')' then
-      ("", all)
-    else
-      let (a, b) = parseSymbol xs
-      in (x:a, b)
-  parseSymbol [] = error "parseSymbol [] should never be evaluated."
+      parseInteger [] = Right ("", "")
+
+      parseSymbol :: String -> (String, String)
+      parseSymbol all@(x : xs)
+        | isSpace x || x == '(' || x == ')'  = ("", all)
+        | otherwise = let (a, b) = parseSymbol xs in (x : a, b)
+
+      parseSymbol [] = error "parseSymbol [] should never be evaluated."

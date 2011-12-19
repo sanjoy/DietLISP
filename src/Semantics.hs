@@ -35,12 +35,12 @@ data Result = IntegerR Integer
 instance Show Result where
   show (IntegerR i)                = show i
   show (BooleanR value)            = if value then "true" else "false"
-  show (ListR l)                   = "(" ++ (intercalate " " $ map show l) ++ ")"
-  show (SymbolR (SymE s))          = "'" ++ s
+  show (ListR l)                   = "(" ++ unwords (map show l) ++ ")"
+  show (SymbolR (SymE s))          = '\'':s
   show (SymbolR (IntegerE i))      = show i
   show (SymbolR (BooleanE value))  = if value then "true" else "false"
   show (SymbolR (ListE _))         = error "There should be no SymbolR (ListE) instances!"
-  show (LambdaR _ _ bod)             = "## Function Object ##: " ++ (show bod)
+  show (LambdaR _ _ _)             = "## Function Object ##"
   show (MacroR _ _)                = "## Macro Object ##"
   show (ThunkR _ _)                = "## Thunk Object ##"
   show (UndefinedR s)              = "⊥ (" ++ s ++ ")"
@@ -61,33 +61,19 @@ nAryOp bindings operands begin operation = do
   integers <- mapM (evaluate bindings) operands
   return $ foldl evalOp (IntegerR begin) integers
     where
-      evalOp (IntegerR i) (IntegerR j) = (IntegerR $ operation i j)
+      evalOp (IntegerR i) (IntegerR j) = IntegerR $ operation i j
       evalOp _ _                       =
           UndefinedR "attempted to apply integer operation to non-integers"
 
--- Combine LEFT and RIGHT (both assumed integers) using OPERATION in
--- context BINDINGS.  Result in UndefinedR in case of operands of
--- incorrect type, IntegerR otherwise.
-binaryOp bindings operation (left, right) = do
-  eLeft <- evaluate bindings left
-  eRight <- evaluate bindings right
-  return $ evalOp eLeft eRight
-    where
-      evalOp (IntegerR i) (IntegerR j) = (IntegerR $ operation i j)
-      evalOp _ _                       =
-          UndefinedR "attempted to apply integer operation to non-integer"
+binaryOp bindings l r evalFn = do
+  eLeft <- evaluate bindings l
+  eRight <- evaluate bindings r
+  case (eLeft, eRight) of
+    (IntegerR i, IntegerR j) -> return $ evalFn i j
+    (_, _) -> return $ UndefinedR "integer operation applied to non-integers"
 
--- Compare LEFT and RIGHT (both assumed integers) using OPERATION in
--- context BINDINGS.  Result in UndefinedR in case of operands of
--- incorrect type, BooleanR otherwise.
-relatOp bindings operation (left, right) = do
-  eLeft <- evaluate bindings left
-  eRight <- evaluate bindings right
-  return $ evalOp eLeft eRight
-    where
-      evalOp (IntegerR i) (IntegerR j) = (BooleanR $ operation i j)
-      evalOp _ _                       =
-          UndefinedR "attempted to apply integer operation to non-integer"
+intBinOp  bindings op (l, r) = binaryOp bindings l r (\i j -> IntegerR $ op i j)
+boolBinOp bindings op (l, r) = binaryOp bindings l r (\i j -> BooleanR $ op i j)
 
 argsError name n = Left $ "`" ++ name ++ "` expects only " ++ n ++ " argument" ++
                    (if name == "one" then "" else "s")
@@ -113,7 +99,7 @@ evaluate _ (SymE "null") = return $ ListR []
 evaluate bindings (SymE s) =
   case lookupM s bindings of
     Just (ThunkR oldB exp) -> evaluate oldB exp
-    Just result            -> return $ result
+    Just result            -> return result
     Nothing                -> return $ UndefinedR $ resolutionError s bindings
       where
         resolutionError symbol bindings =
@@ -123,15 +109,15 @@ evaluate bindings (SymE s) =
 -- Basic arithmetic.
 evaluate bindings (ListE (SymE "+":addends))  = nAryOp bindings addends 0 (+)
 evaluate bindings (ListE (SymE "*":addends))  = nAryOp bindings addends 1 (*)
-evaluate bindings (ListE (SymE "-":ops))      = extract2 "-" ops >>= binaryOp bindings (-)
-evaluate bindings (ListE (SymE "/":ops))      = extract2 "/" ops >>= binaryOp bindings div
-evaluate bindings (ListE (SymE "%":ops))      = extract2 "%" ops >>= binaryOp bindings mod
+evaluate bindings (ListE (SymE "-":ops))      = extract2 "-" ops >>= intBinOp bindings (-)
+evaluate bindings (ListE (SymE "/":ops))      = extract2 "/" ops >>= intBinOp bindings div
+evaluate bindings (ListE (SymE "%":ops))      = extract2 "%" ops >>= intBinOp bindings mod
 
 -- Relational arithmetic
-evaluate bindings (ListE (SymE ">":ops))   = extract2 ">"  ops >>= relatOp bindings (>)
-evaluate bindings (ListE (SymE ">=":ops))  = extract2 ">=" ops >>= relatOp bindings (>=)
-evaluate bindings (ListE (SymE "<":ops))   = extract2 "<"  ops >>= relatOp bindings (<)
-evaluate bindings (ListE (SymE "<=":ops))  = extract2 "<=" ops >>= relatOp bindings (<=)
+evaluate bindings (ListE (SymE ">":ops))   = extract2 ">"  ops >>= boolBinOp bindings (>)
+evaluate bindings (ListE (SymE ">=":ops))  = extract2 ">=" ops >>= boolBinOp bindings (>=)
+evaluate bindings (ListE (SymE "<":ops))   = extract2 "<"  ops >>= boolBinOp bindings (<)
+evaluate bindings (ListE (SymE "<=":ops))  = extract2 "<=" ops >>= boolBinOp bindings (<=)
 
 -- (if condition true-value false-value)
 -- :: typeof (true-value) == typeof (false-value)
@@ -194,29 +180,29 @@ evaluate bindings (ListE (SymE "==":operands)) = do
       else return $ BooleanR $ eLeft == eRight
 
 -- (integerp a)
-evaluate bindings (ListE (SymE "integerp":operands)) = do
-  extract1 "integerp" operands >>= evaluate bindings >>= return . integerp
+evaluate bindings (ListE (SymE "integerp":operands)) =
+  liftM integerp (extract1 "integerp" operands >>= evaluate bindings)
     where
       integerp (IntegerR _) = BooleanR True
       integerp _            = BooleanR False
 
 -- (listp a)
 evaluate bindings (ListE (SymE "listp":operands)) =
-  extract1 "listp" operands >>= evaluate bindings >>= return . listp
+  liftM listp (extract1 "listp" operands >>= evaluate bindings)
     where
       listp (ListR _) = BooleanR True
       listp _         = BooleanR False
 
 -- (boolp a)
 evaluate bindings (ListE (SymE "boolp":operands)) =
-  extract1 "boolp" operands >>= evaluate bindings >>= return . boolp
+  liftM boolp (extract1 "boolp" operands >>= evaluate bindings)
     where
       boolp (BooleanR _) = BooleanR True
       boolp _            = BooleanR False
 
 -- (symbolp a)
 evaluate bindings (ListE (SymE "symbolp":operands)) =
-  extract1 "symbolp" operands >>= evaluate bindings >>= return . symbolp
+  liftM symbolp (extract1 "symbolp" operands >>= evaluate bindings)
     where
       symbolp (SymbolR _) = BooleanR True
       symbolp _           = BooleanR False
@@ -243,7 +229,7 @@ evaluate bindings (ListE (SymE "lambda":rest)) = do
 evaluate bindings (ListE (SymE "sym":rest)) = do
   atom <- extract1 "sym" rest
   case atom of
-    ListE l -> return $ UndefinedR $ "can't quote a list: " ++ (show l)
+    ListE l -> return $ UndefinedR "`sym` can only be applied on symbols"
     atom    -> return $ SymbolR atom
 
 evaluate bindings (ListE []) = return $ ListR []
@@ -257,7 +243,7 @@ evaluate bindings (ListE (functionExpr:args)) = do
                   newAST <- evaluate (insertM "ast" (quote $ ListE args) b) expr
                   let unQuotedAST = unquote newAST
                   evaluate bindings unQuotedAST
-    otherwise           -> return $ UndefinedR $ "cannot execute expression `" ++ (show function) ++ "`"
+    otherwise           -> return $ UndefinedR $ "cannot execute expression `" ++ show function ++ "`"
     where
       curry (LambdaR oldB [] expression) [] = evaluate oldB expression
       curry lambda []                       = return lambda
@@ -270,13 +256,12 @@ evaluate bindings (ListE (functionExpr:args)) = do
       quote x            = SymbolR x
 
 -- Parse bindings from a list like ((var0 exp0) (var1 exp1) ...)
-parseBindings oldBindings varlist =
-  foldM addBindings oldBindings varlist
+parseBindings = foldM addBindings
   where
     addBindings oldMap (ListE [SymE v, e]) = do
       let value = ThunkR oldMap e
       return $ insertM v value oldMap
-    addBindings _ list = Left $ "invalid binding syntax: `" ++ (show list) ++ "`"
+    addBindings _ list = Left $ "invalid binding syntax: `" ++ show list ++ "`"
 
 builtins = let evaluated = do
                  exps <- fullParse origin

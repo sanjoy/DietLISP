@@ -13,7 +13,7 @@ runFile fileName debug = do
   contents <- hGetContents handle
   let results = eval contents
   case results of
-    Left string -> putStrLn string
+    Left string -> putStrLn $ "error:  " ++ string
     Right results -> putStrLn $ showResults results
   hClose handle
     where
@@ -24,8 +24,7 @@ usage = do
   version
   putStrLn "Usage: dlisp [file name]"
 
-version = do
-  putStrLn "DietLISP 0.1 (c) Sanjoy Das"
+version = putStrLn "DietLISP 0.1 (c) Sanjoy Das"
 
 main = do
   args <- getArgs

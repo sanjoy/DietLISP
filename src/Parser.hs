@@ -35,7 +35,7 @@ stateMachine (RParT:rest) stack = do
       findEnd (MarkerSE:rest) = Right ([], rest)
       findEnd (ValueSE x:xs) = do
         (exps, stackLeft) <- findEnd xs
-        return ((x:exps), stackLeft)
+        return (x:exps, stackLeft)
 
 stateMachine (SymbolT s:rest) stack = stateMachine rest $ case s of
   "true"    -> (ValueSE $ BooleanE True):stack
