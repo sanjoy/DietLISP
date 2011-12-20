@@ -9,7 +9,6 @@ import Utils
 
 import Control.Monad(foldM, liftM)
 import Data.Map(Map, empty, fromList, toList, insert, lookup)
-import Data.List(intercalate)
 
 -- Pretty way to prevent clashes.
 emptyM  = empty
