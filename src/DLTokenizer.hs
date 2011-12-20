@@ -38,7 +38,7 @@ tokenize all@(x : rest)
          rest <- tokenize leftOvers
          return $ token:rest
   | otherwise =
-    do let (symbolString, leftOvers) = parseSymbol all
+    do (symbolString, leftOvers) <- parseSymbol all
        rest <- tokenize leftOvers
        return $ (SymbolT symbolString):rest
 
@@ -54,9 +54,9 @@ tokenize all@(x : rest)
 
       parseInteger [] = Right ("", "")
 
-      parseSymbol :: String -> (String, String)
+      parseSymbol :: String -> Either String (String, String)
       parseSymbol all@(x : xs)
-        | isSpace x || x == '(' || x == ')'  = ("", all)
-        | otherwise = let (a, b) = parseSymbol xs in (x : a, b)
+        | isSpace x || x == '(' || x == ')' = return ("", all)
+        | otherwise = parseSymbol xs >>= (\(a, b)->return (x : a, b))
 
-      parseSymbol [] = error "parseSymbol [] should never be evaluated."
+      parseSymbol [] = Left "unexpected end of input when parsing symbol"
