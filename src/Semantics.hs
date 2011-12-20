@@ -1,4 +1,4 @@
-module Semantics(evaluate, eval) where
+module Semantics(eval, evalTopLevel) where
 
 {- Denotational semantics-like reduction rules.  -}
 
@@ -277,9 +277,9 @@ unquote (SymbolR x)  = x
 unquote (ListR l)    = ListE $ map unquote l
 unquote _            = error "unquoting arbitrary values is a sin!"
 
-evalDefun :: Bindings -> Exp -> Either String (Bindings, Result)
+evalTopLevel :: Bindings -> Exp -> Either String (Bindings, Result)
 -- (defun foo bar baz) == (set foo (Y (lambda foo bar baz)))
-evalDefun bindings (ListE (SymE "defun":rest)) = do
+evalTopLevel bindings (ListE (SymE "defun":rest)) = do
   (name, args, expr) <- extract3 "defun" rest
   nameText <- castSymE "a `defun` needs to have a symbol as its name" name
   arguments <- castListE "the second argument to a `defun` is an argument list" args
@@ -288,13 +288,13 @@ evalDefun bindings (ListE (SymE "defun":rest)) = do
   value <- evaluate bindings recursiveL
   return (insertM nameText value bindings, SymbolR name)
 
-evalDefun bindings (ListE (SymE "defmacro":rest)) = do
+evalTopLevel bindings (ListE (SymE "defmacro":rest)) = do
   (name, expr) <- extract2 "defmacro" rest
   nameText <- castSymE "a `defmacro` needs to have a symbol as its name" name
   let macro = MacroR bindings expr
   return (insertM nameText macro bindings, SymbolR name)
 
-evalDefun bindings expression =  do
+evalTopLevel bindings expression =  do
   eExpr <- evaluate bindings expression
   return (bindings, eExpr)
 
@@ -310,4 +310,4 @@ mapMContext f a (b:bs) = do
 eval :: String -> Either String [Result]
 eval s = do
    exps <- fullParse s
-   mapMContext evalDefun builtins $ reverse exps
+   mapMContext evalTopLevel builtins $ reverse exps
