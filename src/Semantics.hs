@@ -42,7 +42,7 @@ instance Show Result where
   show (LambdaR _ _ _)             = "## Function Object ##"
   show (MacroR _ _)                = "## Macro Object ##"
   show (ThunkR _ _)                = "## Thunk Object ##"
-  show (UndefinedR s)              = "⊥ (" ++ s ++ ")"
+  show (UndefinedR s)              = "bottom (" ++ s ++ ")"
 
 isUndef (UndefinedR _)  = True
 isUndef _               = False
