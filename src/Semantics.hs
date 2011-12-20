@@ -1,4 +1,4 @@
-module Semantics(eval, evalTopLevel) where
+module Semantics(eval, evalTopLevel, Bindings, Result, builtins) where
 
 {- Denotational semantics-like reduction rules.  -}
 
