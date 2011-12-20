@@ -1,4 +1,4 @@
-module REPL where
+module REPL(runREPL) where
 
 import System.Console.Readline
 

@@ -2,6 +2,7 @@ module Main(main) where
 
 import Control.Exception
 import Parser
+import REPL
 import Semantics
 
 import Data.List(intercalate)
@@ -22,13 +23,15 @@ runFile fileName debug = do
 
 usage = do
   version
-  putStrLn "Usage: dlisp [file name]"
+  putStrLn "Usage: dlisp [--repl] [file name]"
 
 version = putStrLn "DietLISP 0.1 (c) Sanjoy Das"
 
 main = do
   args <- getArgs
   case args of
+    []                    -> runREPL
+    ["--repl"]            -> runREPL
     ["--version"]         -> version
     ["--usage"]           -> usage
     [fileName]            -> runFile fileName False
