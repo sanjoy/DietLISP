@@ -47,6 +47,14 @@ instance Show Result where
 isUndef (UndefinedR _)  = True
 isUndef _               = False
 
+smallPredicate name bindings operands predicate = do
+  operand <- extract1 name operands
+  result <- evaluate bindings operand
+  if isUndef result then
+    return result
+    else
+      return $ predicate result
+
 castListE _ (ListE es) = return es
 castListE string _     = Left string
 
@@ -61,6 +69,11 @@ nAryOp bindings operands begin operation = do
   return $ foldl evalOp (IntegerR begin) integers
     where
       evalOp (IntegerR i) (IntegerR j) = IntegerR $ operation i j
+      {-  The ordering of the two following clauses is important.  This ensures
+          that expressions like (if (+ a b) 0 1) report an error about symbol `a`
+          and not `b` (assuming neither of them are defined).  -}
+      evalOp (UndefinedR x) _          = UndefinedR x
+      evalOp _ (UndefinedR x)          = UndefinedR x
       evalOp _ _                       =
           UndefinedR "attempted to apply integer operation to non-integers"
 
@@ -69,6 +82,8 @@ binaryOp bindings l r evalFn = do
   eRight <- evaluate bindings r
   case (eLeft, eRight) of
     (IntegerR i, IntegerR j) -> return $ evalFn i j
+    (UndefinedR x, _)        -> return $ UndefinedR x
+    (_, UndefinedR x)        -> return $ UndefinedR x
     (_, _) -> return $ UndefinedR "integer operation applied to non-integers"
 
 intBinOp  bindings op (l, r) = binaryOp bindings l r (\i j -> IntegerR $ op i j)
@@ -123,7 +138,9 @@ evaluate bindings (ListE (SymE "<=":ops))  = extract2 "<=" ops >>= boolBinOp bin
 evaluate bindings (ListE (SymE "if":operands)) = do
   (condition, t, e) <- extract3 "if" operands
   eCondition <- evaluate bindings condition
-  evaluateIf eCondition t e
+  if isUndef eCondition
+    then return eCondition
+    else evaluateIf eCondition t e
     where
       evaluateIf (BooleanR True) a _   = evaluate bindings a
       evaluateIf (BooleanR False)  _ b = evaluate bindings b
@@ -134,8 +151,13 @@ evaluate bindings (ListE (SymE "if":operands)) = do
 evaluate bindings (ListE (SymE "cons":operands)) = do
   (head, tail) <- extract2 "cons" operands
   eHead <- evaluate bindings head
-  eTail <- evaluate bindings tail
-  return $ evaluateCons eHead eTail
+  if isUndef eHead
+    then return eHead
+    else do
+      eTail <- evaluate bindings tail
+      if isUndef eTail
+        then return eTail
+        else return $ evaluateCons eHead eTail
     where
       evaluateCons :: Result -> Result -> Result
       evaluateCons a (ListR b) = ListR (a:b)
@@ -146,7 +168,9 @@ evaluate bindings (ListE (SymE "cons":operands)) = do
 evaluate bindings (ListE (SymE "head":operands)) = do
   list <- extract1 "head" operands
   eList <- evaluate bindings list
-  return $ evaluateHead eList
+  if isUndef eList
+    then return eList
+    else return $ evaluateHead eList
     where
       evaluateHead (ListR (x:_)) = x
       evaluateHead (ListR [])    = UndefinedR "can't take head of empty list"
@@ -157,7 +181,9 @@ evaluate bindings (ListE (SymE "head":operands)) = do
 evaluate bindings (ListE (SymE "tail":operands)) = do
   list <- extract1 "head" operands
   eList <- evaluate bindings list
-  return $ evaluateTail eList
+  if isUndef eList
+    then return eList
+    else return $ evaluateTail eList
     where
       evaluateTail (ListR (_:xs)) = ListR xs
       evaluateTail (ListR [])     = UndefinedR "can't take tail of empty list"
@@ -173,35 +199,38 @@ evaluate bindings (ListE (SymE "list":rest)) = do
 evaluate bindings (ListE (SymE "==":operands)) = do
   (left, right) <- extract2 "==" operands
   eLeft <- evaluate bindings left
-  eRight <- evaluate bindings right
-  if isUndef eLeft || isUndef eRight then
-      return $ UndefinedR "`⊥` passed as `==` operand"
-      else return $ BooleanR $ eLeft == eRight
+  if isUndef eLeft
+    then return eLeft
+    else do
+      eRight <- evaluate bindings right
+      if isUndef eRight
+        then return eRight
+        else return $ BooleanR $ eLeft == eRight
 
 -- (integerp a)
 evaluate bindings (ListE (SymE "integerp":operands)) =
-  liftM integerp (extract1 "integerp" operands >>= evaluate bindings)
+  smallPredicate "integerp" bindings operands integerp
     where
       integerp (IntegerR _) = BooleanR True
       integerp _            = BooleanR False
 
 -- (listp a)
 evaluate bindings (ListE (SymE "listp":operands)) =
-  liftM listp (extract1 "listp" operands >>= evaluate bindings)
+  smallPredicate "listp" bindings operands listp
     where
       listp (ListR _) = BooleanR True
       listp _         = BooleanR False
 
 -- (boolp a)
 evaluate bindings (ListE (SymE "boolp":operands)) =
-  liftM boolp (extract1 "boolp" operands >>= evaluate bindings)
+  smallPredicate "boolp" bindings operands boolp
     where
       boolp (BooleanR _) = BooleanR True
       boolp _            = BooleanR False
 
 -- (symbolp a)
 evaluate bindings (ListE (SymE "symbolp":operands)) =
-  liftM symbolp (extract1 "symbolp" operands >>= evaluate bindings)
+  smallPredicate "symbolp" bindings operands symbolp
     where
       symbolp (SymbolR _) = BooleanR True
       symbolp _           = BooleanR False
@@ -242,6 +271,7 @@ evaluate bindings (ListE (functionExpr:args)) = do
                   newAST <- evaluate (insertM "ast" (quote $ ListE args) b) expr
                   let unQuotedAST = unquote newAST
                   evaluate bindings unQuotedAST
+    all@(UndefinedR _)  -> return all
     otherwise           -> return $ UndefinedR $ "cannot execute expression `" ++ show function ++ "`"
     where
       curry (LambdaR oldB [] expression) [] = evaluate oldB expression
