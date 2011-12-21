@@ -4,27 +4,28 @@ import System.Console.Readline
 
 import Parser(fullParse)
 import Semantics
+import Utils
 
 data REPLState = REPLState String Bindings deriving(Show, Eq)
 
 freshState = REPLState "" builtins
 
-rMapContext :: (a -> b -> Either String (a, c)) -> a -> [b] -> ([Either String c], a)
+rMapContext :: (a -> b -> MResult String (a, c)) -> a -> [b] -> ([MResult String c], a)
 rMapContext _ bindings [] = ([], bindings)
 rMapContext f oldSeed (current:bs) =
     case f oldSeed current of
-      Left errorStr           -> let (p, q) = rMapContext f oldSeed bs
-                                 in (Left errorStr:p, q)
-      Right (newSeed, result) -> let (p, q) = rMapContext f newSeed bs
-                                 in (Right result:p, q)
+      EResult errorStr          -> let (p, q) = rMapContext f oldSeed bs
+                                   in (EResult errorStr:p, q)
+      CResult (newSeed, result) -> let (p, q) = rMapContext f newSeed bs
+                                   in (return result:p, q)
 
-repl :: REPLState -> String -> (REPLState, [Either String Result])
+repl :: REPLState -> String -> (REPLState, [MResult String Result])
 repl (REPLState oldStr oldB) string =
     let (toEval, leftOvers) = bootstrap (oldStr ++ string) []
     in if toEval /= "" then
            case fullParse toEval of
-             Left error -> (REPLState leftOvers oldB, [Left $ "could not parse `" ++ toEval ++ "`" ++ error])
-             Right exps -> let (results, bindings) = rMapContext evalTopLevel oldB exps
+             EResult error -> (REPLState leftOvers oldB, [EResult $ "could not parse `" ++ toEval ++ "`" ++ error])
+             CResult exps -> let (results, bindings) = rMapContext evalTopLevel oldB exps
                            in (REPLState leftOvers bindings, results)
        else
            (REPLState leftOvers oldB, [])
@@ -42,8 +43,8 @@ repl (REPLState oldStr oldB) string =
 
 runREPL = delegate freshState
     where
-      printResult (Left error)   = putStrLn $ "error:  " ++ error
-      printResult (Right result) = print result
+      printResult (EResult error)  = putStrLn $ "error:  " ++ error
+      printResult (CResult result) = print result
       delegate state = do
         thisLine <- readline "dlisp % "
         case thisLine of

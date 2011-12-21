@@ -4,6 +4,7 @@ module Parser(Exp(..), parse, fullParse) where
    sorts of things.  -}
 
 import DLTokenizer
+import Utils
 
 -- DietLISP's AST.
 data Exp = ListE [Exp] | SymE String | IntegerE Integer
@@ -14,15 +15,15 @@ data StackElement = ValueSE Exp -- A value on the stack
                   | MarkerSE    -- A marker signalling an open parenthesis
                     deriving(Show, Eq)
 
-parse :: [Token] -> Either String [Exp]
+parse :: [Token] -> MResult String [Exp]
 parse tokens = stateMachine tokens []
 
-stateMachine :: [Token] -> [StackElement] -> Either String [Exp]
+stateMachine :: [Token] -> [StackElement] -> MResult String [Exp]
 
 stateMachine [] values = mapM recover values
   where
-    recover (ValueSE e) = Right e
-    recover _           = Left "unbalanced parens:  extra '('"
+    recover (ValueSE e) = return e
+    recover _           = EResult "unbalanced parens:  extra '('"
 
 stateMachine (LParT:rest) stack = stateMachine rest (MarkerSE:stack)
 
@@ -31,8 +32,8 @@ stateMachine (RParT:rest) stack = do
   let value = ValueSE $ ListE $ reverse exps
   stateMachine rest (value:stackLeft)
     where
-      findEnd [] = Left "unbalanced parens:  extra ')'"
-      findEnd (MarkerSE:rest) = Right ([], rest)
+      findEnd [] = EResult "unbalanced parens:  extra ')'"
+      findEnd (MarkerSE:rest) = return ([], rest)
       findEnd (ValueSE x:xs) = do
         (exps, stackLeft) <- findEnd xs
         return (x:exps, stackLeft)
@@ -45,5 +46,5 @@ stateMachine (SymbolT s:rest) stack = stateMachine rest $ case s of
 stateMachine (IntegerT i:rest) stack =
   stateMachine rest ((ValueSE $ IntegerE i):stack)
 
-fullParse :: String -> Either String [Exp]
+fullParse :: String -> MResult String [Exp]
 fullParse str = tokenize str >>= parse

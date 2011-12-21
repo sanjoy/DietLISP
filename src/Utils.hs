@@ -1,6 +1,8 @@
-module Utils where
+module Utils(MResult(..)) where
 
-instance Monad (Either a) where
-  return           = Right
-  (Right a) >>= f  = f a
-  (Left str) >>= f = Left str
+data MResult a b = EResult a | CResult b
+
+instance Monad (MResult a) where
+  return           = CResult
+  (CResult a) >>= f  = f a
+  (EResult str) >>= f = EResult str

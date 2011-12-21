@@ -56,10 +56,10 @@ smallPredicate name bindings operands predicate = do
       return $ predicate result
 
 castListE _ (ListE es) = return es
-castListE string _     = Left string
+castListE string _     = EResult string
 
 castSymE _ (SymE sym) = return sym
-castSymE string _     = Left string
+castSymE string _     = EResult string
 
 -- Fold OPERANDS (assumed integers) using OPERATION seeding with BEGIN in
 -- context BINDINGS.  Result in UndefinedR in case of operands of
@@ -89,22 +89,22 @@ binaryOp bindings l r evalFn = do
 intBinOp  bindings op (l, r) = binaryOp bindings l r (\i j -> IntegerR $ op i j)
 boolBinOp bindings op (l, r) = binaryOp bindings l r (\i j -> BooleanR $ op i j)
 
-argsError name n = Left $ "`" ++ name ++ "` expects only " ++ n ++ " argument" ++
+argsError name n = EResult $ "`" ++ name ++ "` expects only " ++ n ++ " argument" ++
                    (if name == "one" then "" else "s")
 
-extract1 :: String -> [Exp] -> Either String Exp
+extract1 :: String -> [Exp] -> MResult String Exp
 extract1 _ [x]  = return x
 extract1 name _ = argsError name "one"
 
-extract2 :: String -> [Exp] -> Either String (Exp, Exp)
+extract2 :: String -> [Exp] ->  MResult String (Exp, Exp)
 extract2 _ [x, y] = return (x, y)
 extract2 name _   = argsError name "two"
 
-extract3 :: String -> [Exp] -> Either String (Exp, Exp, Exp)
+extract3 :: String -> [Exp] -> MResult String (Exp, Exp, Exp)
 extract3 _ [x, y, z] = return (x, y, z)
 extract3 name _      = argsError name "three"
 
-evaluate :: Bindings -> Exp -> Either String Result
+evaluate :: Bindings -> Exp -> MResult String Result
 
 evaluate _ (IntegerE i) = return $ IntegerR i
 evaluate _ (BooleanE b) = return $ BooleanR b
@@ -290,14 +290,14 @@ parseBindings = foldM addBindings
     addBindings oldMap (ListE [SymE v, e]) = do
       let value = ThunkR oldMap e
       return $ insertM v value oldMap
-    addBindings _ list = Left $ "invalid binding syntax: `" ++ show list ++ "`"
+    addBindings _ list = EResult $ "invalid binding syntax: `" ++ show list ++ "`"
 
 builtins = let evaluated = do
                  exps <- fullParse origin
                  parseBindings emptyM $ reverse exps
            in case evaluated of
-                Right exps -> exps
-                Left  str  -> error $ "evaluating Origin failed because of error " ++ str
+                CResult exps -> exps
+                EResult str  -> error $ "evaluating Origin failed because of error " ++ str
 
 -- Unquotes a Result
 unquote :: Result -> Exp
@@ -307,7 +307,7 @@ unquote (SymbolR x)  = x
 unquote (ListR l)    = ListE $ map unquote l
 unquote _            = error "unquoting arbitrary values is a sin!"
 
-evalTopLevel :: Bindings -> Exp -> Either String (Bindings, Result)
+evalTopLevel :: Bindings -> Exp -> MResult String (Bindings, Result)
 -- (defun foo bar baz) == (set foo (Y (lambda foo bar baz)))
 evalTopLevel bindings (ListE (SymE "defun":rest)) = do
   (name, args, expr) <- extract3 "defun" rest
@@ -337,7 +337,7 @@ mapMContext f a (b:bs) = do
 
 -- Essentially the complete external interface for this module.  Evaluates
 -- a string in a fresh context.
-eval :: String -> Either String [Result]
+eval :: String -> MResult String [Result]
 eval s = do
    exps <- fullParse s
    mapMContext evalTopLevel builtins $ reverse exps

@@ -4,6 +4,7 @@ import Control.Exception
 import Parser
 import REPL
 import Semantics
+import Utils
 
 import Data.List(intercalate)
 import System(getArgs)
@@ -14,8 +15,8 @@ runFile fileName debug = do
   contents <- hGetContents handle
   let results = eval contents
   case results of
-    Left string -> putStrLn $ "error:  " ++ string
-    Right results -> putStrLn $ showResults results
+    EResult string  -> putStrLn $ "error:  " ++ string
+    CResult results -> putStrLn $ showResults results
   hClose handle
     where
       showResults :: (Show a) => [a] -> String
