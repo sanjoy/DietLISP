@@ -10,7 +10,7 @@ import Data.List(intercalate)
 import System(getArgs)
 import System.IO
 
-runFile fileName debug = do
+runFile fileName = do
   handle <- openFile fileName ReadMode
   contents <- hGetContents handle
   let results = eval contents
@@ -35,6 +35,5 @@ main = do
     ["--repl"]            -> runREPL
     ["--version"]         -> version
     ["--usage"]           -> usage
-    [fileName]            -> runFile fileName False
-    ["--debug", fileName] -> runFile fileName True
+    [fileName]            -> runFile fileName
     otherwise             -> usage
