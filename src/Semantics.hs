@@ -9,6 +9,7 @@ import Utils
 
 import Control.Monad(foldM, liftM)
 import Data.Map(Map, empty, fromList, toList, insert, lookup)
+import Data.Function(fix)
 
 -- Pretty way to prevent clashes.
 emptyM  = empty
@@ -287,9 +288,9 @@ evaluate bindings (ListE (functionExpr:args)) = do
 -- Parse bindings from a list like ((var0 exp0) (var1 exp1) ...)
 parseBindings = foldM addBindings
   where
-    addBindings oldMap (ListE [SymE v, e]) = do
-      let value = ThunkR oldMap e
-      return $ insertM v value oldMap
+    addBindings oldMap (ListE [SymE var, e]) = do
+      let generator = \map -> insertM var (ThunkR map e) oldMap
+      return $ fix generator
     addBindings _ list = EResult $ "invalid binding syntax: `" ++ show list ++ "`"
 
 builtins = let evaluated = do
