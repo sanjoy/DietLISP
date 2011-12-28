@@ -285,12 +285,13 @@ evaluate bindings (ListE (functionExpr:args)) = do
       quote (ListE l)    = ListR $ map quote l
       quote x            = SymbolR x
 
+recursiveBind expr var oldB = fix (\fixedBind -> insertM var (ThunkR fixedBind expr) oldB)
+
 -- Parse bindings from a list like ((var0 exp0) (var1 exp1) ...)
 parseBindings = foldM addBindings
   where
-    addBindings oldMap (ListE [SymE var, e]) = do
-      let generator = \map -> insertM var (ThunkR map e) oldMap
-      return $ fix generator
+    addBindings oldBindings (ListE [SymE var, e]) = do
+      return $ recursiveBind e var oldBindings
     addBindings _ list = EResult $ "invalid binding syntax: `" ++ show list ++ "`"
 
 builtins = let evaluated = do
@@ -308,16 +309,17 @@ unquote (SymbolR x)  = x
 unquote (ListR l)    = ListE $ map unquote l
 unquote _            = error "unquoting arbitrary values is a sin!"
 
+recursiveDefun name bindings args expr =
+  fix (\fixedBind -> insertM name (LambdaR fixedBind args expr) bindings)
+
 evalTopLevel :: Bindings -> Exp -> MResult String (Bindings, Result)
 -- (defun foo bar baz) == (set foo (Y (lambda foo bar baz)))
 evalTopLevel bindings (ListE (SymE "defun":rest)) = do
   (name, args, expr) <- extract3 "defun" rest
   nameText <- castSymE "a `defun` needs to have a symbol as its name" name
   arguments <- castListE "the second argument to a `defun` is an argument list" args
-  let lambda = ListE [SymE "lambda", ListE (name:arguments), expr]
-  let recursiveL = ListE [SymE "Y", lambda]
-  value <- evaluate bindings recursiveL
-  return (insertM nameText value bindings, SymbolR name)
+  textArgs <- mapM (castSymE "`defun` can only have vanilla symbols as arguments") arguments
+  return (recursiveDefun nameText bindings textArgs expr, SymbolR name)
 
 evalTopLevel bindings (ListE (SymE "defmacro":rest)) = do
   (name, expr) <- extract2 "defmacro" rest
