@@ -1,5 +1,8 @@
 ;; RUN: ../dlisp <file>
 
+(defun Y (f) (f (Y f)))
+;; EXPECT: 'Y
+
 ;; Computes the list of factors of numbers.
 (let ((factorize (Y (lambda (self n current)
                       (if (> current n)

@@ -296,9 +296,9 @@ parseBindings = foldM addBindings
 
 builtins = let evaluated = do
                  exps <- fullParse origin
-                 parseBindings emptyM $ reverse exps
+                 mapMContext evalTopLevel emptyM $ reverse exps
            in case evaluated of
-                CResult exps -> exps
+                CResult (bindings, _) -> bindings
                 EResult str  -> error $ "evaluating Origin failed because of error " ++ str
 
 -- Unquotes a Result
@@ -331,16 +331,17 @@ evalTopLevel bindings expression =  do
   eExpr <- evaluate bindings expression
   return (bindings, eExpr)
 
-mapMContext :: (Monad m) => (a -> b -> m (a, c)) -> a -> [b] -> m [c]
-mapMContext _ _ [] = return []
+mapMContext :: (Monad m) => (a -> b -> m (a, c)) -> a -> [b] -> m (a, [c])
+mapMContext _ a [] = return (a, [])
 mapMContext f a (b:bs) = do
   (newSeed, this) <- f a b
-  rest <- mapMContext f newSeed bs
-  return (this:rest)
+  (newNewSeed, rest) <- mapMContext f newSeed bs
+  return (newNewSeed, this:rest)
 
 -- Essentially the complete external interface for this module.  Evaluates
 -- a string in a fresh context.
 eval :: String -> MResult String [Result]
 eval s = do
    exps <- fullParse s
-   mapMContext evalTopLevel builtins $ reverse exps
+   (_, results) <- mapMContext evalTopLevel builtins $ reverse exps
+   return results
