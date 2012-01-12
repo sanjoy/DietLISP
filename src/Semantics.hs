@@ -7,18 +7,31 @@ import Origin
 import Parser
 import Utils
 
+import Control.Applicative
 import Control.Monad(foldM, liftM)
-import Data.Map(Map, empty, fromList, toList, insert, lookup)
+import qualified Data.Map as M
 import Data.Function(fix)
 
--- Pretty way to prevent clashes.
-emptyM  = empty
-insertM :: (Ord k) => k -> a -> Map k a -> Map k a
-insertM = Data.Map.insert
-lookupM :: (Ord k) => k -> Map k a -> Maybe a
-lookupM = Data.Map.lookup
+data Bindings = RegularB (M.Map String (Exp, Bindings)) Bindings
+              | RecursiveB String (Exp, Bindings) Bindings
+              | NullB deriving(Eq, Show)
 
-type Bindings = Map String Result
+emptyB :: Bindings
+emptyB = NullB
+
+insertB :: Bindings -> String -> (Exp, Bindings) -> Bindings
+insertB (RegularB m p) s (e, b) = RegularB (M.insert s (e, b) m) p
+insertB recOrNull s (e, b) = RegularB (M.insert s (e, b) M.empty) recOrNull
+
+insertRecB :: Bindings -> String -> (Exp, Bindings) -> Bindings
+insertRecB prev s (e, b) = RecursiveB s (e, b) prev
+
+lookupB :: Bindings -> String -> Maybe (Exp, Bindings)
+lookupB NullB _ = Nothing
+lookupB (RegularB c p) s = M.lookup s c <|> lookupB p s
+lookupB (RecursiveB s (recE, recB) p) sym
+  | s == sym = Just (recE, insertRecB recB sym (recE, recB))
+  | otherwise = lookupB p sym
 
 -- An expression evaluates to this type.
 data Result = IntegerR Integer
@@ -26,9 +39,8 @@ data Result = IntegerR Integer
             | ListR [Result]
             | SymbolR Exp
             | LambdaR Bindings {- Closure -} [String] {- Args -}  Exp {- Body -}
-            | MacroR Bindings Exp
+            | MacroR Bindings String Exp
             | UndefinedR String {- Error -}
-            | ThunkR Bindings Exp
               deriving(Eq)
 
 -- Prettier display
@@ -40,9 +52,8 @@ instance Show Result where
   show (SymbolR (IntegerE i))      = show i
   show (SymbolR (BooleanE value))  = if value then "true" else "false"
   show (SymbolR (ListE _))         = error "There should be no SymbolR (ListE) instances!"
-  show (LambdaR _ _ _)             = "## Function Object ##"
-  show (MacroR _ _)                = "## Macro Object ##"
-  show (ThunkR _ _)                = "## Thunk Object ##"
+  show (LambdaR _ _ e)             = "## Function Object ## : " ++ show e
+  show (MacroR _ _ _)              = "## Macro Object ##"
   show (UndefinedR s)              = "bottom (" ++ s ++ ")"
 
 isUndef (UndefinedR _)  = True
@@ -112,14 +123,11 @@ evaluate _ (BooleanE b) = return $ BooleanR b
 evaluate _ (SymE "null") = return $ ListR []
 
 evaluate bindings (SymE s) =
-  case lookupM s bindings of
-    Just (ThunkR oldB exp) -> evaluate oldB exp
-    Just result            -> return result
-    Nothing                -> return $ UndefinedR $ resolutionError s bindings
+  case lookupB bindings s of
+    Just (exp, oldB) -> evaluate oldB exp
+    Nothing          -> return $ UndefinedR $ resolutionError s bindings
       where
-        resolutionError symbol bindings =
-          let list = show $ map fst $ toList bindings
-          in "can't resolve symbol `" ++ symbol ++ "`"
+        resolutionError symbol bindings = "can't resolve symbol `" ++ symbol ++ "`"
 
 -- Basic arithmetic.
 evaluate bindings (ListE (SymE "+":addends))  = nAryOp bindings addends 0 (+)
@@ -254,6 +262,11 @@ evaluate bindings (ListE (SymE "lambda":rest)) = do
     where
       errorMsg = "`lambda` can only have vanilla symbols as arguments"
 
+evaluate bindings (ListE (SymE "macro":rest)) = do
+  (args, expression) <- extract2 "macro" rest
+  astArg <- castSymE "`macro` should be followed by the ast symbol" args
+  return $ MacroR bindings astArg expression
+
 -- (quote a)
 evaluate bindings (ListE (SymE "sym":rest)) = do
   atom <- extract1 "sym" rest
@@ -268,35 +281,34 @@ evaluate bindings (ListE (functionExpr:args)) = do
   function <- evaluate bindings functionExpr
   case function of
     all@(LambdaR _ _ _) -> curry all args
-    all@(MacroR b expr) -> do
-                  newAST <- evaluate (insertM "ast" (quote $ ListE args) b) expr
-                  let unQuotedAST = unquote newAST
-                  evaluate bindings unQuotedAST
+    all@(MacroR b ast expr) -> do
+      let newBindings = insertB b ast ((quote $ ListE args), emptyB)
+      newAST <- evaluate newBindings expr
+      let unQuotedAST = unquote newAST
+      evaluate bindings unQuotedAST
     all@(UndefinedR _)  -> return all
-    otherwise           -> return $ UndefinedR $ "cannot execute expression `" ++ show function ++ "`"
+    otherwise           -> return $ UndefinedR $
+                           "cannot execute expression `" ++ show function ++ "`"
     where
       curry (LambdaR oldB [] expression) [] = evaluate oldB expression
       curry lambda []                       = return lambda
       curry (LambdaR oldB (formalA:formalAs) expr) (arg:args) =
-          do
-            let eArg = ThunkR bindings arg
-            curry (LambdaR (insertM formalA eArg oldB) formalAs expr) args
+        let newBindings = insertB oldB formalA (arg, bindings)
+        in curry (LambdaR newBindings formalAs expr) args
       curry _ _ = error "curry should only be evaluated after proper argument checking!"
-      quote (ListE l)    = ListR $ map quote l
-      quote x            = SymbolR x
-
-recursiveBind expr var oldB = fix (\fixedBind -> insertM var (ThunkR fixedBind expr) oldB)
+      quote (ListE l)    = ListE (SymE "list":map quote l)
+      quote x            = ListE [SymE "sym", x]
 
 -- Parse bindings from a list like ((var0 exp0) (var1 exp1) ...)
 parseBindings = foldM addBindings
   where
     addBindings oldBindings (ListE [SymE var, e]) = do
-      return $ recursiveBind e var oldBindings
+      return $ insertRecB oldBindings var (e, oldBindings)
     addBindings _ list = EResult $ "invalid binding syntax: `" ++ show list ++ "`"
 
 builtins = let evaluated = do
                  exps <- fullParse origin
-                 mapMContext evalTopLevel emptyM $ reverse exps
+                 mapMContext evalTopLevel emptyB $ reverse exps
            in case evaluated of
                 CResult (bindings, _) -> bindings
                 EResult str  -> error $ "evaluating Origin failed because of error " ++ str
@@ -307,25 +319,29 @@ unquote (IntegerR i) = IntegerE i
 unquote (BooleanR b) = BooleanE b
 unquote (SymbolR x)  = x
 unquote (ListR l)    = ListE $ map unquote l
-unquote _            = error "unquoting arbitrary values is a sin!"
-
-recursiveDefun name bindings args expr =
-  fix (\fixedBind -> insertM name (LambdaR fixedBind args expr) bindings)
+unquote t            = error $ "unquoting arbitrary values is a sin: " ++ show t
 
 evalTopLevel :: Bindings -> Exp -> MResult String (Bindings, Result)
--- (defun foo bar baz) == (set foo (Y (lambda foo bar baz)))
 evalTopLevel bindings (ListE (SymE "defun":rest)) = do
   (name, args, expr) <- extract3 "defun" rest
   nameText <- castSymE "a `defun` needs to have a symbol as its name" name
   arguments <- castListE "the second argument to a `defun` is an argument list" args
   textArgs <- mapM (castSymE "`defun` can only have vanilla symbols as arguments") arguments
   return (recursiveDefun nameText bindings textArgs expr, SymbolR name)
+    where
+      recursiveDefun name bindings args expr =
+        let lambda = ListE [SymE "lambda", ListE $ map SymE args, expr]
+        in insertRecB bindings name (lambda, bindings)
 
 evalTopLevel bindings (ListE (SymE "defmacro":rest)) = do
-  (name, expr) <- extract2 "defmacro" rest
+  (name, args, expr) <- extract3 "defmacro" rest
   nameText <- castSymE "a `defmacro` needs to have a symbol as its name" name
-  let macro = MacroR bindings expr
-  return (insertM nameText macro bindings, SymbolR name)
+  astArg <- castSymE "the second argument to a `defmacro` is the ast symbol" args
+  return (recursiveDefMacro nameText bindings astArg expr, SymbolR name)
+    where
+      recursiveDefMacro name bindings astArg expr =
+        let lambda = ListE [SymE "macro", SymE astArg, expr]
+        in insertRecB bindings name (lambda, bindings)
 
 evalTopLevel bindings expression =  do
   eExpr <- evaluate bindings expression

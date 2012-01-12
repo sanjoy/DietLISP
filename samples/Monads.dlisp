@@ -18,7 +18,7 @@
                                        (form-expression bind-fn rest))))))
 ;; EXPECT: 'form-expression
 
-(defmacro do
+(defmacro do ast
     (let ((bind-fn (head ast))
           (stmts (tail ast)))
       (form-expression bind-fn stmts)))

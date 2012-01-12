@@ -12,7 +12,7 @@
          condition then (do-cond rest)))))
 ;; EXPECT: 'do-cond
 
-(defmacro cond (do-cond ast))
+(defmacro cond ast (do-cond ast))
 ;; EXPECT: 'cond
 
 (defun cond-test (x)
@@ -28,3 +28,16 @@
 ;; EXPECT: 1
 (cond-test (- 0 5))
 ;; EXPECT: 0
+
+(defun make-make-adder-macro (n)
+  (macro ast
+         (list (sym lambda)
+          (list (sym x))
+          (list
+           (sym +) n (head ast) (sym x)))))
+;; EXPECT: 'make-make-adder-macro
+
+(let ((x (make-make-adder-macro 5)))
+  (let ((fifteen-adder (x (+ 10))))
+    (fifteen-adder 42)))
+;; EXPECT: 57
