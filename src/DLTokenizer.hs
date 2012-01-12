@@ -40,7 +40,7 @@ tokenize all@(x : rest)
   | otherwise =
     do (symbolString, leftOvers) <- parseSymbol all
        rest <- tokenize leftOvers
-       return $ (SymbolT symbolString):rest
+       return $ SymbolT symbolString:rest
 
   where
 
@@ -49,14 +49,14 @@ tokenize all@(x : rest)
       parseInteger :: String -> MResult String (String, String)
       parseInteger all@(x : xs)
         | isDigit x = parseInteger xs >>= (\(a, b)->return (x:a, b))
-        | isSpace x || x == '(' || x == ')' = return ("", all)
+        | isSpace x || x `elem` "()" = return ("", all)
         | otherwise =  EResult $ "found non-digit " ++ [x] ++ " when parsing integer"
 
       parseInteger [] = return ("", "")
 
       parseSymbol :: String -> MResult String (String, String)
       parseSymbol all@(x : xs)
-        | isSpace x || x == '(' || x == ')' = return ("", all)
+        | isSpace x || x `elem` "()" = return ("", all)
         | otherwise = parseSymbol xs >>= (\(a, b)->return (x : a, b))
 
       parseSymbol [] = EResult "unexpected end of input when parsing symbol"

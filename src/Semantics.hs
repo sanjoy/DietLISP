@@ -282,7 +282,7 @@ evaluate bindings (ListE (functionExpr:args)) = do
   case function of
     all@(LambdaR _ _ _) -> curry all args
     all@(MacroR b ast expr) -> do
-      let newBindings = insertB b ast ((quote $ ListE args), emptyB)
+      let newBindings = insertB b ast (quote $ ListE args, emptyB)
       newAST <- evaluate newBindings expr
       let unQuotedAST = unquote newAST
       evaluate bindings unQuotedAST
@@ -302,7 +302,7 @@ evaluate bindings (ListE (functionExpr:args)) = do
 -- Parse bindings from a list like ((var0 exp0) (var1 exp1) ...)
 parseBindings = foldM addBindings
   where
-    addBindings oldBindings (ListE [SymE var, e]) = do
+    addBindings oldBindings (ListE [SymE var, e]) =
       return $ insertRecB oldBindings var (e, oldBindings)
     addBindings _ list = EResult $ "invalid binding syntax: `" ++ show list ++ "`"
 
@@ -325,8 +325,10 @@ evalTopLevel :: Bindings -> Exp -> MResult String (Bindings, Result)
 evalTopLevel bindings (ListE (SymE "defun":rest)) = do
   (name, args, expr) <- extract3 "defun" rest
   nameText <- castSymE "a `defun` needs to have a symbol as its name" name
-  arguments <- castListE "the second argument to a `defun` is an argument list" args
-  textArgs <- mapM (castSymE "`defun` can only have vanilla symbols as arguments") arguments
+  arguments <- castListE ("the second argument to a `defun` has to " ++
+               "be an argument list") args
+  textArgs <- mapM (castSymE ("`defun` can only have vanilla symbols " ++
+                    "as arguments")) arguments
   return (recursiveDefun nameText bindings textArgs expr, SymbolR name)
     where
       recursiveDefun name bindings args expr =
@@ -336,7 +338,8 @@ evalTopLevel bindings (ListE (SymE "defun":rest)) = do
 evalTopLevel bindings (ListE (SymE "defmacro":rest)) = do
   (name, args, expr) <- extract3 "defmacro" rest
   nameText <- castSymE "a `defmacro` needs to have a symbol as its name" name
-  astArg <- castSymE "the second argument to a `defmacro` is the ast symbol" args
+  astArg <- castSymE ("the second argument to a `defmacro` has to be the " ++
+            "ast symbol") args
   return (recursiveDefMacro nameText bindings astArg expr, SymbolR name)
     where
       recursiveDefMacro name bindings astArg expr =
