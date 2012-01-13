@@ -10,7 +10,7 @@ import Utils
 import Control.Applicative
 import Control.Monad(foldM, liftM)
 import qualified Data.Map as M
-import Data.Function(fix)
+import Data.List(intercalate)
 
 data Bindings = RegularB (M.Map String (Exp, Bindings)) Bindings
               | RecursiveB String (Exp, Bindings) Bindings
@@ -40,6 +40,7 @@ data Result = IntegerR Integer
             | SymbolR Exp
             | LambdaR Bindings {- Closure -} [String] {- Args -}  Exp {- Body -}
             | MacroR Bindings String Exp
+            | WorldR [Integer] [String]
             | UndefinedR String {- Error -}
               deriving(Eq)
 
@@ -55,6 +56,7 @@ instance Show Result where
   show (LambdaR _ _ e)             = "## Function Object ## : " ++ show e
   show (MacroR _ _ _)              = "## Macro Object ##"
   show (UndefinedR s)              = "bottom (" ++ s ++ ")"
+  show (WorldR _ outputs)          = intercalate "\n" outputs
 
 isUndef (UndefinedR _)  = True
 isUndef _               = False
@@ -196,7 +198,8 @@ evaluate bindings (ListE (SymE "tail":operands)) = do
     where
       evaluateTail (ListR (_:xs)) = ListR xs
       evaluateTail (ListR [])     = UndefinedR "can't take tail of empty list"
-      evaluateTail _              = UndefinedR "can't take tail of non-list"
+      evaluateTail x              = UndefinedR $ "can't take tail of non-list: "
+                                    ++ (show x)
 
 -- (list x0 x1 x2 ...)
 evaluate bindings (ListE (SymE "list":rest)) = do
@@ -274,6 +277,23 @@ evaluate bindings (ListE (SymE "sym":rest)) = do
     ListE l -> return $ UndefinedR "`sym` can only be applied on symbols"
     atom    -> return $ SymbolR atom
 
+evaluate bindings (WorldE i o) = return $ WorldR i o
+
+evaluate bindings (ListE (SymE "read":rest)) = do
+  world <- extract1 "read" rest
+  eWorld <- evaluate bindings world
+  case eWorld of
+    WorldR (i:inputs) output -> return $ ListR [WorldR inputs output, IntegerR i]
+    x -> return $ UndefinedR $ "`read` can only be applied to the world" ++ (show x)
+
+evaluate bindings (ListE (SymE "write":rest)) = do
+  (world, obj) <- extract2 "write" rest
+  eWorld <- evaluate bindings world
+  eObj <- evaluate bindings obj
+  case eWorld of
+    WorldR inputs output -> return $ WorldR inputs (show eObj:output)
+    x -> return $ UndefinedR $ "`write` can only be applied to the world" ++ (show x)
+
 evaluate bindings (ListE []) = return $ ListR []
 
 -- Macro and function calls
@@ -308,7 +328,7 @@ parseBindings = foldM addBindings
 
 builtins = let evaluated = do
                  exps <- fullParse origin
-                 mapMContext evalTopLevel emptyB $ reverse exps
+                 mapMContext (evalTopLevel $ WorldE [] []) emptyB $ reverse exps
            in case evaluated of
                 CResult (bindings, _) -> bindings
                 EResult str  -> error $ "evaluating Origin failed because of error " ++ str
@@ -321,8 +341,8 @@ unquote (SymbolR x)  = x
 unquote (ListR l)    = ListE $ map unquote l
 unquote t            = error $ "unquoting arbitrary values is a sin: " ++ show t
 
-evalTopLevel :: Bindings -> Exp -> MResult String (Bindings, Result)
-evalTopLevel bindings (ListE (SymE "defun":rest)) = do
+evalTopLevel :: Exp -> Bindings -> Exp -> MResult String (Bindings, Result)
+evalTopLevel world bindings (ListE (SymE "defun":rest)) = do
   (name, args, expr) <- extract3 "defun" rest
   nameText <- castSymE "a `defun` needs to have a symbol as its name" name
   arguments <- castListE ("the second argument to a `defun` has to " ++
@@ -335,7 +355,7 @@ evalTopLevel bindings (ListE (SymE "defun":rest)) = do
         let lambda = ListE [SymE "lambda", ListE $ map SymE args, expr]
         in insertRecB bindings name (lambda, bindings)
 
-evalTopLevel bindings (ListE (SymE "defmacro":rest)) = do
+evalTopLevel world bindings (ListE (SymE "defmacro":rest)) = do
   (name, args, expr) <- extract3 "defmacro" rest
   nameText <- castSymE "a `defmacro` needs to have a symbol as its name" name
   astArg <- castSymE ("the second argument to a `defmacro` has to be the " ++
@@ -346,9 +366,13 @@ evalTopLevel bindings (ListE (SymE "defmacro":rest)) = do
         let lambda = ListE [SymE "macro", SymE astArg, expr]
         in insertRecB bindings name (lambda, bindings)
 
-evalTopLevel bindings expression =  do
-  eExpr <- evaluate bindings expression
-  return (bindings, eExpr)
+evalTopLevel world bindings (ListE (SymE "begin":rest)) = do
+  result <- evaluate bindings $ ListE (rest ++ [world])
+  return (bindings, result)
+
+evalTopLevel world bindings expression = do
+  result <- evaluate bindings expression
+  return (bindings, result)
 
 mapMContext :: (Monad m) => (a -> b -> m (a, c)) -> a -> [b] -> m (a, [c])
 mapMContext _ a [] = return (a, [])
@@ -359,8 +383,8 @@ mapMContext f a (b:bs) = do
 
 -- Essentially the complete external interface for this module.  Evaluates
 -- a string in a fresh context.
-eval :: String -> MResult String [Result]
-eval s = do
+eval :: String -> [Integer] -> MResult String [Result]
+eval s input = do
    exps <- fullParse s
-   (_, results) <- mapMContext evalTopLevel builtins $ reverse exps
+   (_, results) <- mapMContext (evalTopLevel $ WorldE input []) builtins $ reverse exps
    return results

@@ -8,7 +8,8 @@ import Utils
 
 -- DietLISP's AST.
 data Exp = ListE [Exp] | SymE String | IntegerE Integer
-         | BooleanE Bool deriving(Show, Eq)
+         | BooleanE Bool | WorldE [Integer] [String]
+         deriving(Show, Eq)
 
 -- To be used by the shift-reduce parser.
 data StackElement = ValueSE Exp -- A value on the stack

@@ -2,7 +2,7 @@ module REPL(runREPL) where
 
 import System.Console.Readline
 
-import Parser(fullParse)
+import Parser(fullParse, Exp (WorldE))
 import Semantics
 import Utils
 
@@ -28,7 +28,8 @@ repl (REPLState oldStr oldB) string =
                (REPLState leftOvers oldB,
                 [EResult $ "could not parse `" ++ toEval ++ "`" ++ error])
              CResult exps ->
-               let (results, bindings) = rMapContext evalTopLevel oldB exps
+               let (results, bindings) =
+                     rMapContext(evalTopLevel $ WorldE [] []) oldB exps
                in (REPLState leftOvers bindings, results)
        else
            (REPLState leftOvers oldB, [])
