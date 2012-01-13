@@ -40,7 +40,7 @@ takes the ``World``, an object to print and returns a new ``World``
 (in which the object has been printed).
 
 The expression passed to ``begin`` must eventually evaluate to a
-``World`.  In essence ``World`` models the universe around the
+``World``.  In essence ``World`` models the universe around the
 expressions being evaluated and a side-effecting expression is a
 mapping from an old universe to a new one.
 
