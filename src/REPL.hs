@@ -24,9 +24,12 @@ repl (REPLState oldStr oldB) string =
     let (toEval, leftOvers) = bootstrap (oldStr ++ string) []
     in if toEval /= "" then
            case fullParse toEval of
-             EResult error -> (REPLState leftOvers oldB, [EResult $ "could not parse `" ++ toEval ++ "`" ++ error])
-             CResult exps -> let (results, bindings) = rMapContext evalTopLevel oldB exps
-                           in (REPLState leftOvers bindings, results)
+             EResult error ->
+               (REPLState leftOvers oldB,
+                [EResult $ "could not parse `" ++ toEval ++ "`" ++ error])
+             CResult exps ->
+               let (results, bindings) = rMapContext evalTopLevel oldB exps
+               in (REPLState leftOvers bindings, results)
        else
            (REPLState leftOvers oldB, [])
     where
