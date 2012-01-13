@@ -270,7 +270,7 @@ evaluate bindings (ListE (SymE "macro":rest)) = do
   astArg <- castSymE "`macro` should be followed by the ast symbol" args
   return $ MacroR bindings astArg expression
 
--- (quote a)
+-- (sym a)
 evaluate bindings (ListE (SymE "sym":rest)) = do
   atom <- extract1 "sym" rest
   case atom of
