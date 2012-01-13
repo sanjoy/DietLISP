@@ -395,7 +395,10 @@ evalTopLevel world bindings (ListE (SymE "defmacro":rest)) = do
 
 evalTopLevel world bindings (ListE (SymE "begin":rest)) = do
   result <- evaluate bindings $ ListE (rest ++ [world])
-  return (bindings, result)
+  case result of
+    WorldR a b -> return (bindings, WorldR a b)
+    something  -> EResult $ "`begin` expression did not evaluate to a new world: "
+                  ++ (show something)
 
 evalTopLevel world bindings expression = do
   result <- evaluate bindings expression
