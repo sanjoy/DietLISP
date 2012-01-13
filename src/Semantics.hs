@@ -12,9 +12,20 @@ import Control.Monad(foldM, liftM)
 import qualified Data.Map as M
 import Data.List(intercalate)
 
+-- This represents the bindings between symbols and values when
+-- evaluating an expression.  This is not a simple map since we need
+-- to be able to know which values are recursively bound and create
+-- recursive bindings for them to evaluate in.  This representation
+-- makes that easy.
+
 data Bindings = RegularB (M.Map String (Exp, Bindings)) Bindings
               | RecursiveB String (Exp, Bindings) Bindings
               | NullB deriving(Eq, Show)
+
+-- The various functions to work with the Bindings.  insertB adds a
+-- regular binding, and insertRecB adds a recursive binding (the
+-- symbol being bound to is visible inside the expression that is
+-- being bound to it).
 
 emptyB :: Bindings
 emptyB = NullB
@@ -61,6 +72,8 @@ instance Show Result where
 isUndef (UndefinedR _)  = True
 isUndef _               = False
 
+-- Wraps a small function so that it does not have to check explicitly
+-- for ⊥
 smallPredicate name bindings operands predicate = do
   operand <- extract1 name operands
   result <- evaluate bindings operand
@@ -69,39 +82,14 @@ smallPredicate name bindings operands predicate = do
     else
       return $ predicate result
 
+-- These are expressions using within the MResult monad.  They allow
+-- the evaluating functions to be cleaner, since a lot of basic error
+-- reporting is shifted here.
 castListE _ (ListE es) = return es
 castListE string _     = EResult string
 
 castSymE _ (SymE sym) = return sym
 castSymE string _     = EResult string
-
--- Fold OPERANDS (assumed integers) using OPERATION seeding with BEGIN in
--- context BINDINGS.  Result in UndefinedR in case of operands of
--- incorrect type, IntegerR otherwise.
-nAryOp bindings operands begin operation = do
-  integers <- mapM (evaluate bindings) operands
-  return $ foldl evalOp (IntegerR begin) integers
-    where
-      evalOp (IntegerR i) (IntegerR j) = IntegerR $ operation i j
-      {-  The ordering of the two following clauses is important.  This ensures
-          that expressions like (if (+ a b) 0 1) report an error about symbol `a`
-          and not `b` (assuming neither of them are defined).  -}
-      evalOp (UndefinedR x) _          = UndefinedR x
-      evalOp _ (UndefinedR x)          = UndefinedR x
-      evalOp _ _                       =
-          UndefinedR "attempted to apply integer operation to non-integers"
-
-binaryOp bindings l r evalFn = do
-  eLeft <- evaluate bindings l
-  eRight <- evaluate bindings r
-  case (eLeft, eRight) of
-    (IntegerR i, IntegerR j) -> return $ evalFn i j
-    (UndefinedR x, _)        -> return $ UndefinedR x
-    (_, UndefinedR x)        -> return $ UndefinedR x
-    (_, _) -> return $ UndefinedR "integer operation applied to non-integers"
-
-intBinOp  bindings op (l, r) = binaryOp bindings l r (\i j -> IntegerR $ op i j)
-boolBinOp bindings op (l, r) = binaryOp bindings l r (\i j -> BooleanR $ op i j)
 
 argsError name n = EResult $ "`" ++ name ++ "` expects only " ++ n ++ " argument" ++
                    (if name == "one" then "" else "s")
@@ -117,6 +105,37 @@ extract2 name _   = argsError name "two"
 extract3 :: String -> [Exp] -> MResult String (Exp, Exp, Exp)
 extract3 _ [x, y, z] = return (x, y, z)
 extract3 name _      = argsError name "three"
+
+-- Fold OPERANDS (assumed integers) using OPERATION seeding with BEGIN in
+-- context BINDINGS.  Result in UndefinedR in case of operands of
+-- incorrect type, IntegerR otherwise.
+nAryOp bindings operands begin operation = do
+  integers <- mapM (evaluate bindings) operands
+  return $ foldl evalOp (IntegerR begin) integers
+    where
+      evalOp (IntegerR i) (IntegerR j) = IntegerR $ operation i j
+      -- The ordering of the two following clauses is important.  This
+      -- ensures that expressions like (if (+ a b) 0 1) report an
+      -- error about symbol `a` and not `b` (assuming neither of them
+      -- are defined).
+      evalOp (UndefinedR x) _          = UndefinedR x
+      evalOp _ (UndefinedR x)          = UndefinedR x
+      evalOp _ _                       =
+          UndefinedR "attempted to apply integer operation to non-integers"
+
+-- Generic integral binary operator, evaluates EVALFN on L and R after
+-- some error checking.
+binaryOp bindings l r evalFn = do
+  eLeft <- evaluate bindings l
+  eRight <- evaluate bindings r
+  case (eLeft, eRight) of
+    (IntegerR i, IntegerR j) -> return $ evalFn i j
+    (UndefinedR x, _)        -> return $ UndefinedR x
+    (_, UndefinedR x)        -> return $ UndefinedR x
+    (_, _) -> return $ UndefinedR "integer operation applied to non-integers"
+
+intBinOp  bindings op (l, r) = binaryOp bindings l r (\i j -> IntegerR $ op i j)
+boolBinOp bindings op (l, r) = binaryOp bindings l r (\i j -> BooleanR $ op i j)
 
 evaluate :: Bindings -> Exp -> MResult String Result
 
@@ -265,6 +284,9 @@ evaluate bindings (ListE (SymE "lambda":rest)) = do
     where
       errorMsg = "`lambda` can only have vanilla symbols as arguments"
 
+-- (macro a expression)
+-- Note that `a` is not a list, but just a symbol which the AST will
+-- be bound to.
 evaluate bindings (ListE (SymE "macro":rest)) = do
   (args, expression) <- extract2 "macro" rest
   astArg <- castSymE "`macro` should be followed by the ast symbol" args
@@ -277,8 +299,11 @@ evaluate bindings (ListE (SymE "sym":rest)) = do
     ListE l -> return $ UndefinedR "`sym` can only be applied on symbols"
     atom    -> return $ SymbolR atom
 
+-- Nothing parses to WorldE -- this is just a convenient hack.
 evaluate bindings (WorldE i o) = return $ WorldR i o
 
+-- (read world)
+-- Returns (new-world, integer-read)
 evaluate bindings (ListE (SymE "read":rest)) = do
   world <- extract1 "read" rest
   eWorld <- evaluate bindings world
@@ -286,6 +311,8 @@ evaluate bindings (ListE (SymE "read":rest)) = do
     WorldR (i:inputs) output -> return $ ListR [WorldR inputs output, IntegerR i]
     x -> return $ UndefinedR $ "`read` can only be applied to the world" ++ (show x)
 
+-- (write object world)
+-- Returns the world after writing the object out to stdout
 evaluate bindings (ListE (SymE "write":rest)) = do
   (world, obj) <- extract2 "write" rest
   eWorld <- evaluate bindings world
@@ -381,8 +408,9 @@ mapMContext f a (b:bs) = do
   (newNewSeed, rest) <- mapMContext f newSeed bs
   return (newNewSeed, this:rest)
 
--- Essentially the complete external interface for this module.  Evaluates
--- a string in a fresh context.
+-- The complete external interface for this module.  Evaluates a
+-- string in a fresh context. INPUT is the list of integers begin
+-- (lazily) read from the console.
 eval :: String -> [Integer] -> MResult String [Result]
 eval s input = do
    exps <- fullParse s
