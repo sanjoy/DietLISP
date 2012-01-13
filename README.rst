@@ -3,8 +3,7 @@ DietLISP
 
 DietLISP is an interpreter for an untyped Lisp variant written in
 Haskell.  This is a toy project that I started working on during my
-winter break in the Doon valley (I can't compile anything larger on my
-Dell Mini 1018).
+winter break in the Doon valley.
 
 The Language
 ============
@@ -38,12 +37,16 @@ There are two IO functions, ``read`` and ``write``.  ``read`` takes
 the ``World`` and returns an (integer) input with the changed
 ``World`` (in which the input has been read) in a list.  ``write``
 takes the ``World``, an object to print and returns a new ``World``
-(in which the object has been printed).  In essence ``World`` models
-the universe around the expressions being evaluated.
+(in which the object has been printed).
 
-There is a small example in ``samples/dntIO.dlisp``, and I think the
-code can simplified further by a judicious use of macros and
-higher-order functions.
+The expression passed to ``begin`` must eventually evaluate to a
+``World`.  In essence ``World`` models the universe around the
+expressions being evaluated and a side-effecting expression is a
+mapping from an old universe to a new one.
+
+There is a small example in ``samples/dntIO.dlisp``.  I think the code
+can simplified further by a judicious use of macros and higher-order
+functions.
 
 Nameless macros
 ~~~~~~~~~~~~~~~
@@ -78,10 +81,10 @@ execution time, which I think should not be the case.
 **Type system**
 
 DietLISP currently does not have a statically typed system and reports
-type errors at runtime.  I'd like to implement ``System F``'s type
-system (with Rank N types and what not) sometime in the future.  If
-I'm able to decipher dependent types someday, then that too should be
-something interesting to implement.
+type errors at runtime.  I'd like to implement System F's type system
+(with Rank N types and what not) sometime in the future.  If I'm able
+to decipher dependent types someday, then that too should be something
+interesting to implement.
 
 I think implementing a type system will be easier once I have a
 stricter AST.
@@ -91,8 +94,8 @@ stricter AST.
 The operational behaviour of the interpreter is not very efficient.
 For instance, it does not run in a bounded control context.  I've been
 saving CPS and other such nice things for the time I decide to
-implement a compiler, probably to C or LLVM.  This will probably be
-next step after implementing a nice type system.
+implement a compiler, probably to C or LLVM.  I think this will be a
+good next step after implementing a type system.
 
 
 Texts
