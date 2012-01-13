@@ -79,6 +79,9 @@ def test(command, output):
         return False
 
 def process_file(file_name):
+    if file_name[:3].lower () == 'dnt':
+        print 'Skipping ' + file_name
+        return
     print 'Testing `' + file_name + '`'
     try:
         f = open(file_name, 'r')
