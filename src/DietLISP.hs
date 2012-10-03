@@ -7,7 +7,7 @@ import Semantics
 import Utils
 
 import Data.List(intercalate)
-import System(getArgs)
+import System.Environment(getArgs)
 import System.IO
 
 wrapEval :: String -> String -> String
