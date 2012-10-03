@@ -78,8 +78,8 @@ def test(command, output):
         print 'Failed to execute command `' + command + '`'
         return False
 
-def process_file(file_name):
-    if file_name[:3].lower () == 'dnt':
+def process_file(file_name, possibly_skip):
+    if file_name[:3].lower () == 'dnt' and possibly_skip:
         print 'Skipping ' + file_name
         return
     print 'Testing `' + file_name + '`'
@@ -113,9 +113,9 @@ def main():
     if sys.argv[1] == '--all':
         for filename in os.listdir(os.getcwd()):
             if filename.endswith('.dlisp'):
-                process_file(filename)
+                process_file(filename, True)
     else:
-        process_file(sys.argv[1])
+        process_file(sys.argv[1], False)
 
 if __name__ == "__main__":
     main()
