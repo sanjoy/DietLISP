@@ -28,7 +28,7 @@ data Ast = BuiltinA { getBuiltinName :: String }
          | GlobalBindA { getBoundIdent :: Ident,
                          getBody :: Ast
                        }
-         deriving(Show)
+         deriving(Show, Eq)
 
 
 createAst :: String -> ErrorM [Ast]
