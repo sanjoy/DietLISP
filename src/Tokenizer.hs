@@ -1,4 +1,4 @@
-module DLTokenizer(tokenize, Token(..)) where
+module Tokenizer(tokenize, Token(..)) where
 
 {- A simple Lexer DietLISP. -}
 

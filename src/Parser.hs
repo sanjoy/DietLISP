@@ -1,6 +1,6 @@
 module Parser(Ast(..), createAst, Ident) where
 
-import DLTokenizer
+import Tokenizer
 import Utils
 
 import Control.Monad(liftM)
