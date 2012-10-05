@@ -1,105 +1,78 @@
 DietLISP
---------
+========
 
 DietLISP is an interpreter for an untyped Lisp variant written in
 Haskell.  This is a toy project that I started working on during my
 winter break in the Doon valley.
 
 The Language
-============
+------------
 
 DietLISP is a minimalist, lazy, purely functional lisp.  It does not
-have a static type system, and supports macros.
+have a static type system.  The distinguishing feature of DietLISP is
+that all executable things in it are *semi-operatives*.
 
-I have tried to model the reduction rules on denotational semantics
-instead of resorting to some ad-hoc reduction machinery.  The
-reduction rules are specified in Semantics.hs.  As of now, the
-interpreter does not try very hard to report helpful error messages.
-
-It is possible to write something resembling monads with an
-appropriate use of macros and higher order functions.  You can see an
-example in ``samples/Monads.dlisp``.
-
-IO
-~~
-
-IO in DietLISP is implemented the way I used to think Haskell's IO
-works.  Turns out I was wrong, but I still implemented my simplistic
-model since it works and is something I clearly understand.
-
-The idea is this: the outside world is modelled using a ``World``
-object, which is passed around by the DietLISP program itself (so
-there is very little magic).  The only way to obtain this object is to
-use the special operator ``begin``, which evaluates the expression
-that follows it with the current ``World`` as an argument.
-
-There are two IO functions, ``read`` and ``write``.  ``read`` takes
-the ``World`` and returns an (integer) input with the changed
-``World`` (in which the input has been read) in a list.  ``write``
-takes the ``World``, an object to print and returns a new ``World``
-(in which the object has been printed).
-
-The expression passed to ``begin`` must eventually evaluate to a
-``World``.  In essence ``World`` models the universe around the
-expressions being evaluated and a side-effecting expression is a
-mapping from an old universe to a new one.
-
-There is a small example in ``samples/dntIO.dlisp``.  I think the code
-can simplified further by a judicious use of macros and higher-order
-functions.
-
-Nameless macros
+Semi-Operatives
 ~~~~~~~~~~~~~~~
 
-DietLISP has this concept of a nameless macro, which is basically to
-``defmacro`` what ``lambda`` is to defun.  This pushes the semantics
-of macros a little closer to those of functions.  I'm not sure whether
-this will add an interesting, orthogonal expressiveness; and I will
-remove it if I find it makes writing a compiler much harder.
+The notion of a semi-operative is similar to that of an *operative* in
+the Kernel programming language.  Semi-operatives combine macros and
+functions into one unified concept but are more restrictive than
+*fexprs*.
 
-Future Goals
-============
+I'd like to describe a semi-operative as *a hook into the denotational
+semantics of the interpreter*.  You see, in a regular lisp, functions
+don't directly influence the interpreter and macros are hooks into the
+*parser*.  By going a little deeper, we get a macro-function hybrid.
 
-This is a pet project of mine, and hence there are no clearly set
-goals.  However, I wish to work on the following as and when I get
-time:
+An operative, like a macro, gets the bits of AST it has been invoked
+with, and (unlike a macro) the environment where it was invoked.  It
+has access to functions that evaluate an AST in a specific environment
+(``eval`` and ``eval*``), and functions to extend the environment
+(``add-binding``).  The result of the operative invocation is the
+value (rather, the *domain value*) the interpreter gets by executing
+the operative.  Thus, it is useful to think of operatives as hooks
+that arbitrarily map program phrases into domain values.
 
-Stronger static guarantees
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+As an example of what this makes possible, look at
+``samples/SimpleOperatives.dlisp``::
 
-**Stricter AST**
+  ;; The #builtin# directives return an operative defined inside the
+     interpreter in Haskell.  global-bind binds them to the global
+     lexical scope.
+  (global-bind let (#builtin# #let#))
+  (global-bind eval (#builtin# #eval#))
 
-The current representation of the AST is not as rigid as I want it to
-be.  After parsing, even, say, a list corresponding to an ``if``
-expression can have five elements, when there should only be four.
-DietLISP should figure out *what* an expression is and, say, put it in
-a ``IfE`` instead of an generic ``ListE`` during the parsing stage.
-Currently these kinds of errors are caught and reported during
-execution time, which I think should not be the case.
+  (global-bind wormhole (operative () env (eval env x)))
 
+  (let (x 42) (wormhole)) ;; Prints 42, since wormhole evaluates x in
+    the environment inside let x (42)
 
-**Type system**
+``eval`` evaluates the first ast in the environment passed as the
+second argument.  ``eval*`` evaluates the first ast in the context of
+the current environment and then evaluates this *result* in the
+context of the environment passed as the second argument (the first
+argument not evaluating to an ast is an error).  This allows you to
+write functions like this::
 
-DietLISP currently does not have a statically typed system and reports
-type errors at runtime.  I'd like to implement System F's type system
-(with Rank N types and what not) sometime in the future.  If I'm able
-to decipher dependent types someday, then that too should be something
-interesting to implement.
+   (operative (number) env
+     (let (evaluated-number (eval* env number))
+       (+ evaluated-number 5)))
 
-I think implementing a type system will be easier once I have a
-stricter AST.
+``eval*`` first evaluates ``number`` in the current lexical scope
+(which gives us the AST passed to the operative during evaluation) and
+then evaluates *that* ast using ``env`` (which gives us some result to
+which we then add 5).
 
-**A compiler**
+Hopes and fears
+~~~~~~~~~~~~~~~
 
-The operational behaviour of the interpreter is not very efficient.
-For instance, it does not run in a bounded control context.  I've been
-saving CPS and other such nice things for the time I decide to
-implement a compiler, probably to C or LLVM.  I think this will be a
-good next step after implementing a type system.
-
+So, will this work?  I don't know.  I have a hunch semi-operatives
+might lead to a cleaner and more orthogonal language; I'll keep
+updating this README as I explore and learn more.
 
 Texts
-=====
+-----
 
 As it is probably evident by now, this is more of a academic project.
 I found the following texts very helpful:
