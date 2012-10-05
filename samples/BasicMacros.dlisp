@@ -1,0 +1,25 @@
+;; RUN: ../dlisp <file>
+
+(global-bind if (#builtin# #if#))
+;; EXPECT: #operative#
+(global-bind cons (#builtin# #cons#))
+;; EXPECT: #operative#
+(global-bind nil ((#builtin# #nil#)))
+;; EXPECT: []
+(global-bind eval* (#builtin# #eval*#))
+;; EXPECT: #operative#
+
+(global-bind clist (operative (x) env (cons (eval* env x) nil)))
+;; EXPECT: #operative#
+(global-bind when (operative (condition action) env
+                             (if (eval* env condition)
+                                 (eval* env action)
+                                 0)))
+;; EXPECT: #operative#
+
+(clist 2)
+;; EXPECT: [2]
+(when true 5)
+;; EXPECT: 5
+(when false 5)
+;; EXPECT: 0
