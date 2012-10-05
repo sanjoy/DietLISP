@@ -1,0 +1,24 @@
+;; RUN: ../dlisp <file>
+
+(global-bind let (#builtin# #let#))
+;; EXPECT: #operative#
+(global-bind eval (#builtin# #eval#))
+;; EXPECT: #operative#
+
+(global-bind wormhole (operative () env (eval env x)))
+;; EXPECT: #operative#
+
+(let (x 42)
+  (wormhole))
+;; EXPECT: 42
+
+(global-bind + (#builtin# #plus#))
+;; EXPECT: #operative#
+(global-bind eval* (#builtin# #eval*#))
+;; EXPECT: #operative#
+
+(let (plus-five (operative (number) env
+                           (let (evaluated-number (eval* env number))
+                             (+ evaluated-number 5))))
+  (plus-five (+ 6 7)))
+;; EXPECT: 18

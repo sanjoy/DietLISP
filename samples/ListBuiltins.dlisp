@@ -1,0 +1,28 @@
+;; RUN: ../dlisp <file>
+
+(global-bind listp (#builtin# #listp#))
+;; EXPECT: #operative#
+(global-bind integerp (#builtin# #integerp#))
+;; EXPECT: #operative#
+(global-bind cons (#builtin# #cons#))
+;; EXPECT: #operative#
+(global-bind head (#builtin# #head#))
+;; EXPECT: #operative#
+(global-bind tail (#builtin# #tail#))
+;; EXPECT: #operative#
+(global-bind nil ((#builtin# #nil#)))
+;; EXPECT: []
+(global-bind nilp (#builtin# #nilp#))
+;; EXPECT: #operative#
+
+(global-bind l (cons 1 (cons 2 nil)))
+;; EXPECT: [1,2]
+
+(listp l)
+;; EXPECT: true
+(nilp l)
+;; EXPECT: false
+(head l)
+;; EXPECT: 1
+(tail l)
+;; EXPECT: [2]
