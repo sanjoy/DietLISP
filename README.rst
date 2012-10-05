@@ -20,26 +20,27 @@ in the Kernel programming language.  Semi-operatives combine macros
 and functions into one unified concept but are more restrictive than
 *fexprs*.
 
-I'd like to describe a semi-operative as *a hook into the denotational
+I like to describe a semi-operative as *a hook into the denotational
 semantics of the interpreter*.  You see, in a regular lisp, functions
 don't directly influence the interpreter and macros are hooks into the
 *parser*.  Semi-operatives go a little deeper and we get a
 macro-function hybrid.
 
-An operative, like a macro, gets the bits of AST it has been invoked
-with, and (unlike a macro) the environment where it was invoked.  It
-has access to functions that evaluate an AST in a specific environment
-(``eval`` and ``eval*``), and functions to extend the environment
-(``add-binding``).  The result of the operative invocation is the
-value (rather, the *domain value*) the interpreter gets by executing
-the semi-operative.  I think it is useful to think of operatives as
-hooks that arbitrarily map program phrases into domain values.
+A semi-operative, like a macro, gets the bits of AST it has been
+invoked with, and (unlike a macro) the environment where it was
+invoked.  It has access to functions that evaluate an AST in a
+specific environment (``eval`` and ``eval*``), and functions to extend
+the environment (``add-binding``).  The result of the semi-operative
+invocation is the value (rather, the *domain value*) the interpreter
+gets by executing the semi-operative.  I think it is useful to think
+of semi-operatives as hooks that arbitrarily map program phrases into
+domain values.
 
 As an example of what this makes possible, look at
 ``samples/SimpleOperatives.dlisp``::
 
-  ;; The #builtin# directives return an operative defined inside the
-     interpreter in Haskell.  global-bind binds them to the global
+  ;; The #builtin# directives return an semi-operative defined inside
+     the interpreter in Haskell.  global-bind binds them to the global
      lexical scope.
   (global-bind let (#builtin# #let#))
   (global-bind eval (#builtin# #eval#))
