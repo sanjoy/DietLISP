@@ -28,7 +28,7 @@ liftUnary predicate domainValue = predicate domainValue
 createBuiltinTuple (name, operative) = ("#" ++ name ++ "#",
                                         B operative ("#" ++ name ++ "#"))
 
-invalidArgsErr fn = BottomD $ "invalid arguments to " ++ fn
+invalidArgsErr fn args = BottomD $ "invalid arguments to " ++ fn ++ ": " ++ show args
 
 -- Wrapper for strict operatives
 runEvaluated fn eval env asts =
@@ -40,7 +40,7 @@ runEvaluated fn eval env asts =
 -- Simple predicates
 predicateTransform (name, operative) = (name, runEvaluated lifted)
   where lifted [value] = BooleanD $ operative value
-        lifted _ = invalidArgsErr name
+        lifted args = invalidArgsErr name args
 
 integerp (IntegerD _) = True
 integerp _ = False
@@ -63,28 +63,31 @@ simplePredicates = map (createBuiltinTuple . predicateTransform)
 
 -- List operatives
 listCons [head, BuiltinD (ListBD tail)] = BuiltinD (ListBD (head:tail))
-listCons _ = invalidArgsErr "cons"
+listCons args = invalidArgsErr "cons" args
 
-listHead [head, BuiltinD (ListBD (x:xs))] = x
-listHead [head, BuiltinD (ListBD [])] = BottomD "head on empty list"
-listHead _ = invalidArgsErr "head"
+listHead [BuiltinD (ListBD (x:xs))] = x
+listHead [BuiltinD (ListBD [])] = BottomD "head on empty list"
+listHead args = invalidArgsErr "head" args
 
-listTail [head, BuiltinD (ListBD (x:xs))] = BuiltinD $ ListBD xs
-listTail [head, BuiltinD (ListBD [])] = BottomD "tail on empty list"
-listTail _ = invalidArgsErr "tail"
+listTail [BuiltinD (ListBD (x:xs))] = BuiltinD $ ListBD xs
+listTail [BuiltinD (ListBD [])] = BottomD "tail on empty list"
+listTail args = invalidArgsErr "tail" args
 
 listNilP [BuiltinD (ListBD [])] = BooleanD True
 listNilP [BuiltinD (ListBD _)] = BooleanD False
-listNilP _ = invalidArgsErr "nilp"
+listNilP args = invalidArgsErr "nilp" args
+
+listNilValue [] = BuiltinD (ListBD [])
+listNilValue args = invalidArgsErr "nil" args
 
 listOperatives = map (createBuiltinTuple . second runEvaluated)
                  [("cons", listCons), ("head", listHead), ("tail", listTail),
-                  ("nilp", listNilP)]
+                  ("nilp", listNilP), ("nil", listNilValue)]
 
 -- Integer arithmetic
 hostArithmetic (name, hostOp) = (name, runEvaluated domainOp)
   where domainOp [IntegerD i1, IntegerD i2] = IntegerD $ hostOp i1 i2
-        domainOp _ = invalidArgsErr name
+        domainOp args = invalidArgsErr name args
 
 arithmeticOperatives = map (createBuiltinTuple . hostArithmetic)
                        [("plus", (+)), ("minus", (-)), ("mult", (*)),
@@ -97,7 +100,7 @@ ifOperative = createBuiltinTuple ("if", builtinIf)
           BooleanD conditionValue ->
             if conditionValue then eval env true else eval env false
           BottomD reason -> BottomD reason
-          _ -> invalidArgsErr "if"
+          args -> invalidArgsErr "if" args
 
 -- Recursive let
 letOperative = createBuiltinTuple ("let", builtinLet)
@@ -107,7 +110,7 @@ letOperative = createBuiltinTuple ("let", builtinLet)
           in case evaluatedValue of
             BottomD reason -> BottomD reason
             value -> eval (addBinding env (ident, value)) body
-        builtinLet _ _ _ = invalidArgsErr "let"
+        builtinLet _ _ args = invalidArgsErr "let" args
 
 -- The eval operatives
 evalOperatives = map createBuiltinTuple [("eval", builtinEval),
@@ -115,7 +118,7 @@ evalOperatives = map createBuiltinTuple [("eval", builtinEval),
   where builtinEval eval env [envAst, ast] = case eval env envAst of
           EnvD effectiveEnv -> eval effectiveEnv ast
           x -> BottomD $ "environment not correct: " ++ show x
-        builtinEval _ _ _ = invalidArgsErr "eval"
+        builtinEval _ _ args = invalidArgsErr "eval" args
         builtinEvalS eval env [envAst, ast] = case eval env ast of
           BottomD reason -> BottomD reason
           AstD ast -> builtinEval eval env [envAst, ast]
@@ -125,12 +128,12 @@ evalOperatives = map createBuiltinTuple [("eval", builtinEval),
 envOperatives = map createBuiltinTuple [("current-env", currentEnv),
                                         ("add-binding", addBindingBuiltin)]
   where currentEnv _ env [] = EnvD env
-        currentEnv _ _ _ = invalidArgsErr "current-env"
+        currentEnv _ _ args = invalidArgsErr "current-env" args
         addBindingBuiltin eval env [rootEnvAst, IdentA ident, value] =
           case eval env rootEnvAst of
             EnvD rootEnv -> EnvD (addBinding rootEnv (ident, eval env value))
             result -> BottomD $ "not valid environment " ++ show result
-        addBindingBuiltin _ _ _ = invalidArgsErr "binding-add"
+        addBindingBuiltin _ _ args = invalidArgsErr "binding-add" args
 
 -- Equality
 equalOperative = createBuiltinTuple ("equal", runEvaluated equality)
@@ -145,5 +148,5 @@ equalOperative = createBuiltinTuple ("equal", runEvaluated equality)
             BooleanD False
         equality [AstD ast1, AstD ast2] = BooleanD $ ast1 == ast2
         equality [_, _] = BooleanD False
-        equality _ = invalidArgsErr "equal"
+        equality args = invalidArgsErr "equal" args
         unwrap (BooleanD v) = v
