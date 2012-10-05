@@ -10,20 +10,21 @@ The Language
 
 DietLISP is a minimalist, lazy, purely functional lisp.  It does not
 have a static type system.  The distinguishing feature of DietLISP is
-that all executable things in it are *semi-operatives*.
+that all executable forms in it are *semi-operatives*.
 
 Semi-Operatives
 ~~~~~~~~~~~~~~~
 
-The notion of a semi-operative is similar to that of an *operative* in
-the Kernel programming language.  Semi-operatives combine macros and
-functions into one unified concept but are more restrictive than
+The notion of a *semi-operative* is similar to that of an *operative*
+in the Kernel programming language.  Semi-operatives combine macros
+and functions into one unified concept but are more restrictive than
 *fexprs*.
 
 I'd like to describe a semi-operative as *a hook into the denotational
 semantics of the interpreter*.  You see, in a regular lisp, functions
 don't directly influence the interpreter and macros are hooks into the
-*parser*.  By going a little deeper, we get a macro-function hybrid.
+*parser*.  Semi-operatives go a little deeper and we get a
+macro-function hybrid.
 
 An operative, like a macro, gets the bits of AST it has been invoked
 with, and (unlike a macro) the environment where it was invoked.  It
@@ -31,8 +32,8 @@ has access to functions that evaluate an AST in a specific environment
 (``eval`` and ``eval*``), and functions to extend the environment
 (``add-binding``).  The result of the operative invocation is the
 value (rather, the *domain value*) the interpreter gets by executing
-the operative.  Thus, it is useful to think of operatives as hooks
-that arbitrarily map program phrases into domain values.
+the semi-operative.  I think it is useful to think of operatives as
+hooks that arbitrarily map program phrases into domain values.
 
 As an example of what this makes possible, look at
 ``samples/SimpleOperatives.dlisp``::
@@ -48,28 +49,39 @@ As an example of what this makes possible, look at
   (let (x 42) (wormhole)) ;; Prints 42, since wormhole evaluates x in
     the environment inside let x (42)
 
-``eval`` evaluates the first ast in the environment passed as the
-second argument.  ``eval*`` evaluates the first ast in the context of
-the current environment and then evaluates this *result* in the
-context of the environment passed as the second argument (the first
-argument not evaluating to an ast is an error).  This allows you to
-write functions like this::
+``eval (ast, env)`` evaluates ``ast`` in the environment ``env``.
+``eval* (ast, env)`` evaluates ``ast`` in the context of the current
+environment and then evaluates this *result* in the context of ``env``
+(``ast`` not evaluating to an AST is an error).  This allows you to
+write functions this way::
 
    (operative (number) env
      (let (evaluated-number (eval* env number))
        (+ evaluated-number 5)))
 
-``eval*`` first evaluates ``number`` in the current lexical scope
-(which gives us the AST passed to the operative during evaluation) and
-then evaluates *that* ast using ``env`` (which gives us some result to
-which we then add 5).
+In the above case, ``eval*`` first evaluates ``number`` in the current
+lexical scope (which gives us the AST passed to the semi-operative
+during evaluation) and then evaluates *that* ast in ``env`` (which
+gives us some result to which we then add 5).
+
+Conditional evaluation makes writing macros easy.  Here is a ``when``
+macro::
+
+  (global-bind when
+    (operative (condition action) env
+      (if (eval* env condition)
+        (eval* env action)
+        0)))
+
+which evaluates to ``action`` if ``condition`` evaluates to
+``true`` else evaluates to ``0``.
 
 Hopes and fears
 ~~~~~~~~~~~~~~~
 
-So, will this work?  I don't know.  I have a hunch semi-operatives
-might lead to a cleaner and more orthogonal language; I'll keep
-updating this README as I explore and learn more.
+So, will this all work out?  I don't know.  I have a hunch that
+semi-operatives might lead to a cleaner and more orthogonal language;
+I'll keep updating this README as I explore and learn more.
 
 Texts
 -----
