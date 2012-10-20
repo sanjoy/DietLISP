@@ -15,7 +15,7 @@ multiEval prevEnv (ast:asts) =
   let (newEnv, value) = evalTopLevel prevEnv ast
   in (value:multiEval newEnv asts)
 
-multiEvalString string = liftM (multiEval emptyEnv) $ createAst string
+multiEvalString string = liftM (multiEval emptyEnv) $ fullParse string
 
 runFile fileName = do
   handle <- openFile fileName ReadMode
