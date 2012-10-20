@@ -1,13 +1,15 @@
 module Tokenizer(tokenize, Token(..)) where
 
-{- A simple Lexer DietLISP. -}
+{- A simple Lexer for DietLISP. -}
+
+import Control.Monad(liftM)
+import Data.Char(isSpace, isDigit)
+import Data.List(find)
 
 import Utils
 
-import Data.Char
-
 data Token = LParT | RParT | SymbolT String | IntegerT Integer
-             deriving(Eq)
+           deriving(Eq)
 
 instance Show Token where
   show LParT = "("
@@ -17,47 +19,21 @@ instance Show Token where
 
 tokenize :: String -> ErrorM [Token]
 tokenize [] = return []
-tokenize ('(':chars) = do
-  rest <- tokenize chars
-  return $ LParT:rest
-
-tokenize (')':chars) = do
-  rest <- tokenize chars
-  return $ RParT:rest
-
--- A semicolon starts a comment that continues to the end of the line.
-tokenize (';':rest) = tokenize $ dropWhile (/= '\n') rest
-
--- Check if the current character starts an integer.  Otherwise it starts
--- a symbol
-tokenize all@(x : rest)
-  | isSpace x = tokenize rest
+tokenize all@(x:rest)
+  | x == '(' = liftM (LParT:) $ tokenize rest
+  | x == ')' = liftM (RParT:) $ tokenize rest
+-- Comments
+  | x == ';' = tokenize $ dropWhile (/= '\n') rest
+-- Symbols and integers.
+  | isSpace x = tokenize $ dropWhile isSpace rest
   | isDigit x =
-      do (integer, leftOvers) <- parseInteger all
-         let token = IntegerT $ read integer
-         rest <- tokenize leftOvers
-         return $ token:rest
+    let (integer, leftOvers) = span delimited all
+    in case find (not . isDigit) integer of
+      Just nonDigit ->
+        reportError $ "found non-digit " ++ [nonDigit] ++ " when parsing integer"
+      Nothing -> liftM ((IntegerT $ read integer):) $ tokenize leftOvers
   | otherwise =
-    do (symbolString, leftOvers) <- parseSymbol all
-       rest <- tokenize leftOvers
-       return $ SymbolT symbolString:rest
-
+    let (symbolString, leftOvers) = span delimited all
+    in liftM (SymbolT symbolString:) $ tokenize leftOvers
   where
-
-  -- Breaks up the string into two parts.  The first part is a parseable
-  -- integer and the second contains the remainder of the string.
-      parseInteger :: String -> ErrorM (String, String)
-      parseInteger all@(x : xs)
-        | isDigit x = parseInteger xs >>= (\(a, b)->return (x:a, b))
-        | isSpace x || x `elem` "()" = return ("", all)
-        | otherwise =  reportError $
-                       "found non-digit " ++ [x] ++ " when parsing integer"
-
-      parseInteger [] = return ("", "")
-
-      parseSymbol :: String -> ErrorM (String, String)
-      parseSymbol all@(x : xs)
-        | isSpace x || x `elem` "()" = return ("", all)
-        | otherwise = parseSymbol xs >>= (\(a, b)->return (x : a, b))
-
-      parseSymbol [] = reportError "unexpected end of input when parsing symbol"
+    delimited ch = not (isSpace ch || ch `elem` "();")
