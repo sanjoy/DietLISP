@@ -77,6 +77,14 @@ macro::
 which evaluates to ``action`` if ``condition`` evaluates to
 ``true`` else evaluates to ``0``.
 
+Two primitives useful when writing macros are ``unwrap-ast`` and
+``wrap-to-ast``, which convert an AST to a domain value and
+vice-versa; respectively.  A list can't be directly evaluated but
+needs to be *wrapped* into an AST before evaluation.  Similarly, an
+AST is impervious to direct introspection till it has been *unwrapped*
+into a regular domain value.
+
+
 Hopes and fears
 ~~~~~~~~~~~~~~~
 
