@@ -1,12 +1,14 @@
 module Builtins(Builtin, lookupBuiltin, getOperative) where
 
 import Control.Arrow(second)
+import Control.Monad(liftM)
 import Data.List(find)
 import Data.Maybe(fromMaybe)
 import qualified Data.Map
 
 import Domain
 import Parser
+import Utils(ErrorM(..), reportError)
 
 data Builtin = B { getOperative :: (Env -> Ast -> Domain) -> Env -> [Ast] -> Domain,
                    getName :: String }
@@ -18,7 +20,7 @@ currentBuiltins :: Data.Map.Map String Builtin
 currentBuiltins = Data.Map.fromList $
                   simplePredicates ++ listOperatives ++ arithmeticOperatives ++
                   [ifOperative] ++ [letOperative] ++ evalOperatives ++
-                  envOperatives ++ [equalOperative]
+                  envOperatives ++ [equalOperative] ++ astConversionOperatives
 
 lookupBuiltin s = Data.Map.lookup s currentBuiltins
 
@@ -51,6 +53,9 @@ booleanp _ = False
 listp (BuiltinD (ListBD _)) = True
 listp _ = False
 
+symp (BuiltinD (SymBD _)) = True
+symp _ = False
+
 astp (AstD _) = True
 astp _ = False
 
@@ -59,7 +64,8 @@ envp _ = False
 
 simplePredicates = map (createBuiltinTuple . predicateTransform)
                    [("integerp", integerp), ("booleanp", booleanp),
-                    ("listp", listp), ("astp", astp), ("envp", envp)]
+                    ("listp", listp), ("astp", astp), ("envp", envp),
+                    ("symp", symp)]
 
 -- List operatives
 listCons [head, BuiltinD (ListBD tail)] = BuiltinD (ListBD (head:tail))
@@ -126,14 +132,13 @@ evalOperatives = map createBuiltinTuple [("eval", builtinEval),
 
 -- Operatives to play around with the environment
 envOperatives = map createBuiltinTuple [("current-env", currentEnv),
-                                        ("add-binding", addBindingBuiltin)]
+                                        ("add-binding",
+                                         runEvaluated addBindingBuiltin)]
   where currentEnv _ env [] = EnvD env
         currentEnv _ _ args = invalidArgsErr "current-env" args
-        addBindingBuiltin eval env [rootEnvAst, IdentA ident, value] =
-          case eval env rootEnvAst of
-            EnvD rootEnv -> EnvD (addBinding rootEnv (ident, eval env value))
-            result -> BottomD $ "not valid environment " ++ show result
-        addBindingBuiltin _ _ args = invalidArgsErr "binding-add" args
+        addBindingBuiltin [EnvD rootE, BuiltinD (SymBD ident), value] =
+            EnvD (addBinding rootE (ident, value))
+        addBindingBuiltin args = invalidArgsErr "binding-add" args
 
 -- Equality
 equalOperative = createBuiltinTuple ("equal", runEvaluated equality)
@@ -150,3 +155,24 @@ equalOperative = createBuiltinTuple ("equal", runEvaluated equality)
         equality [_, _] = BooleanD False
         equality args = invalidArgsErr "equal" args
         unwrap (BooleanD v) = v
+
+-- Convert between lists and ASTs (macros)
+astConversionOperatives = map createBuiltinTuple
+                          [("unwrap-ast", runEvaluated unwrapAST),
+                           ("wrap-to-ast", runEvaluated wrapToAST)]
+  where unwrapAST [AstD ast] = unwrapRawAST $ uncookAST ast
+        unwrapAST args = invalidArgsErr "ast-to-list" args
+        unwrapRawAST (ListE list) = BuiltinD $ ListBD $ map unwrapRawAST list
+        unwrapRawAST (SymE sym) = BuiltinD $ SymBD sym
+        unwrapRawAST (IntegerE integer) = IntegerD integer
+        unwrapRawAST (BooleanE boolean) = BooleanD boolean
+        wrapToAST [domainVal] = case (wrapToRawAST domainVal) >>= cookAST of
+          Result a -> AstD a
+          Error s -> BottomD s
+        wrapToRawAST (IntegerD integer) = return $ IntegerE integer
+        wrapToRawAST (BooleanD boolean) = return $ BooleanE boolean
+        wrapToRawAST (BuiltinD (ListBD list)) =
+          liftM ListE $ mapM wrapToRawAST list
+        wrapToRawAST (BuiltinD (SymBD sym)) = return $ SymE sym
+        wrapToRawAST args =
+          reportError $ "invalid arguments to wrap-to-ast" ++ show args

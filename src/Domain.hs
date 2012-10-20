@@ -24,7 +24,7 @@ resolveBinding (Env env) ident = case Data.Map.lookup ident env of
 
 emptyEnv = Env Data.Map.empty
 
-data BuiltinDomain = ListBD [Domain]
+data BuiltinDomain = ListBD [Domain] | SymBD String
 
 data Domain = OperativeD (Env -> [Ast] -> Domain)
             | IntegerD Integer
@@ -45,6 +45,7 @@ instance Show Domain where
 
 instance Show BuiltinDomain where
   show (ListBD domains) = "[" ++ intercalate "," (map show domains) ++ "]"
+  show (SymBD sym) = "'" ++ sym
 
 instance Show Env where
   show (Env mapping) = show mapping
